@@ -452,10 +452,7 @@ export default function ServiceExplorer() {
     [dataset],
   );
 
-  // ==========================================================================
-  // FILTERING + FACET OPTIONS
-  // Apply active filters to records and derive available location/currency options.
-  // ==========================================================================
+
   const records = useMemo(
     () => filterRecords(rawRecords, filters),
     [rawRecords, filters],
@@ -534,19 +531,12 @@ export default function ServiceExplorer() {
     });
   }, [records, filters.sort]);
 
-  // ==========================================================================
-  // PAGINATION
-  // Pagination applies to provider groups, not individual service rows.
-  // ==========================================================================
+
   const paged = grouped.slice(
     (filters.page - 1) * PAGE_SIZE,
     filters.page * PAGE_SIZE,
   );
 
-  // ==========================================================================
-  // MOBILE DRAWER FILTER STATE
-  // Changes stay pending until the user presses “Show results”.
-  // ==========================================================================
   const setPendingFilter = (key: keyof Filters, value: unknown) => {
     setPending((old) => ({
       ...old,
@@ -556,13 +546,11 @@ export default function ServiceExplorer() {
     }));
   };
 
-  // Preview the result count for the pending mobile filters.
   const pendingCount = useMemo(
     () => (dataset ? filterRecords(rawRecords, pending).length : 0),
     [dataset, rawRecords, pending],
   );
 
-  // Keep the current page valid if filtering/sorting reduces the result count.
   useEffect(() => {
     const lastPage = Math.max(
       1,
@@ -574,7 +562,6 @@ export default function ServiceExplorer() {
     }
   }, [filters.page, grouped.length, setFilter]);
 
-  // Reset both applied and pending filters and keep the URL in sync.
   const resetFilters = () => {
     const next = { ...defaultFilters } as Filters;
     setFilters(next);
@@ -582,10 +569,7 @@ export default function ServiceExplorer() {
     updateUrl(next);
   };
 
-  // ==========================================================================
-  // PAGE RENDERING
-  // Header/hero, results toolbar, service cards, mobile drawer, and footer.
-  // ==========================================================================
+
   return (
     <main>
       <header className="topbar">
