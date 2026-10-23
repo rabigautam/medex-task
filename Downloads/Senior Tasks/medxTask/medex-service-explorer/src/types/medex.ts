@@ -27,15 +27,7 @@ export interface Provider {
     reviewCount?: number | null;
   };
 }
-export interface WellnessOption {
-  id: string;
-  durationInMinutes: number;
-  price: string;
-  discount: string;
-  discountType: "percent" | "amount";
-  serviceCharge: string;
-  serviceChargeType: "percent" | "amount";
-}
+
 export interface Service {
   id: string;
   title: string;
@@ -64,7 +56,15 @@ export interface Filters {
   home: boolean; sort: "relevance" | "price-asc" | "price-desc" | "rating"; page: number;
 }
 export interface ServiceWithProvider { service: Service; provider: Provider; category?: Category; subcategory?: Category; price: Price | null; }
-
+export interface WellnessOption {
+    id: string;
+    durationInMinutes: number;
+    price: string;
+    discount: string;
+    discountType: "percent" | "amount";
+    serviceCharge: string;
+    serviceChargeType: "percent" | "amount";
+  }
 export type FilterPanelProps = {
     filters: Filters;
     setFilter: (key: keyof Filters, value: unknown) => void;
