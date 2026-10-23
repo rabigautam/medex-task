@@ -27,3 +27,23 @@ export interface Provider {
     reviewCount?: number | null;
   };
 }
+
+export interface Service {
+  id: string;
+  title: string;
+  slug?: string;
+  type: ServiceType;
+  userId: number | string;
+  categoryId?: string | null;
+  subCategoryId?: string | null;
+  price: string | null;
+  discount: string | null;
+  discountType: "percent" | "amount" | null;
+  serviceCharge: string | null;
+  serviceChargeType: "percent" | "amount" | null;
+  status: boolean;
+  testAtHome?: boolean;
+  homeTestCharge?: string | null;
+  wellnessPricing?: WellnessOption[];
+  createdAt?: string;
+}
