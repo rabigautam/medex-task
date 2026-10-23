@@ -11,3 +11,19 @@ export interface Category {
   parentId: string | null;
   children?: Category[];
 }
+export interface Provider {
+  id: number | string;
+  name: string;
+  username?: string;
+  status: string;
+  providerInformation: {
+    companyName?: string;
+    slug?: string;
+    types?: ServiceType[];
+    currency: Currency;
+    city?: { id?: string; name: string; slug?: string };
+    country?: { id?: number | string; name: string; alphaCode?: string };
+    rating?: number | null;
+    reviewCount?: number | null;
+  };
+}
