@@ -27,7 +27,15 @@ export interface Provider {
     reviewCount?: number | null;
   };
 }
-
+export interface WellnessOption {
+  id: string;
+  durationInMinutes: number;
+  price: string;
+  discount: string;
+  discountType: "percent" | "amount";
+  serviceCharge: string;
+  serviceChargeType: "percent" | "amount";
+}
 export interface Service {
   id: string;
   title: string;
@@ -47,3 +55,23 @@ export interface Service {
   wellnessPricing?: WellnessOption[];
   createdAt?: string;
 }
+export interface Dataset { categories: Category[]; providers: Provider[]; services: Service[]; }
+export interface Price { amount: number; original: number; currency: Currency; discounted: boolean; }
+export interface Filters {
+    [x: string]: string;
+  q: string; types: ServiceType[]; category: string; subcategory: string;
+  providers: string[]; location: string; currency: Currency; min: string; max: string;
+  home: boolean; sort: "relevance" | "price-asc" | "price-desc" | "rating"; page: number;
+}
+export interface ServiceWithProvider { service: Service; provider: Provider; category?: Category; subcategory?: Category; price: Price | null; }
+
+export type FilterPanelProps = {
+    filters: Filters;
+    setFilter: (key: keyof Filters, value: unknown) => void;
+    records: ServiceWithProvider[];
+    categories: Dataset["categories"];
+    locations: string[];
+    currencies: string[];
+    onReset: () => void;
+  };
+  

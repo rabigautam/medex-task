@@ -1,19 +1,66 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #f7f9fc; color: #17211f; font-family: Arial, Helvetica, sans-serif; }
+button, input, select { font: inherit; }
+button, select { cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #8dd8bd; outline-offset: 2px; }
+.shell { width: min(1240px, calc(100% - 36px)); margin: 0 auto; }
+.topbar { background: white; border-bottom: 1px solid #e4e9e7; }
+.brand { color: #08775d; font-size: 25px; font-weight: 800; letter-spacing: -.8px; }
+.muted { color: #697774; }
+.panel { background: white; border: 1px solid #e1e8e5; border-radius: 14px; }
+.field { width: 100%; border: 1px solid #d5dfdb; background: white; padding: 10px 12px; border-radius: 9px; color: #17211f; }
+.primary { background: #08775d; color: white; border-radius: 9px; padding: 10px 15px; font-weight: 700; }
+.secondary { border: 1px solid #d5dfdb; background: white; border-radius: 9px; padding: 8px 11px; }
+.chip { display: inline-flex; align-items: center; border-radius: 999px; background: #e9f7f1; color: #08775d; padding: 4px 9px; font-size: 12px; font-weight: 700; }
+.layout { display: grid; grid-template-columns: 265px minmax(0, 1fr); gap: 22px; align-items: start; }
+.filter-group { padding: 16px 0; border-bottom: 1px solid #edf0ef; }
+.filter-group:last-child { border-bottom: 0; }
+.filter-title { display: block; font-size: 13px; font-weight: 800; margin-bottom: 10px; }
+.option { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 5px 0; }
+.count { color: #7a8582; margin-left: auto; font-size: 12px; }
+.provider-card { padding: 20px; margin-bottom: 14px; }
+.service-row { border-top: 1px solid #edf0ef; padding: 15px 0; display: flex; justify-content: space-between; gap: 16px; }
+.price { color: #08775d; font-size: 19px; font-weight: 800; white-space: nowrap; }
+.skeleton { height: 140px; background: linear-gradient(90deg,#edf1ef,#f8faf9,#edf1ef); background-size: 200% 100%; border-radius: 12px; animation: shimmer 1.4s infinite; }
+@keyframes shimmer { to { background-position-x: -200%; } }
+@media (max-width: 800px) { .layout { grid-template-columns: 1fr; } .desktop-filters { display: none; } .mobile-filter-button { display: inline-flex !important; } .service-row { flex-direction: column; } .price { white-space: normal; } }
+@media (min-width: 801px) { .mobile-filter-button { display: none !important; } }
+.drawer-backdrop { position: fixed; inset: 0; background: #10231dcc; z-index: 20; display: flex; justify-content: flex-end; }
+.drawer { background: #f7f9fc; width: min(420px, 100%); height: 100%; overflow: auto; padding: 20px; }
+/* Keep filter sections spaced and readable */
+.filter-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
   }
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
+  
+  .filter-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  
+  /* Put each checkbox and its label on its own row */
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 6px 0;
+    cursor: pointer;
+    line-height: 1.4;
+  }
+  
+  /* Make checkboxes a consistent, usable size */
+  .check-row input[type="checkbox"] {
+    appearance: auto;
+    -webkit-appearance: checkbox;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 0;
+    cursor: pointer;
+  }
