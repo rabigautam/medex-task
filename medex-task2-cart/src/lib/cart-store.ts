@@ -100,3 +100,52 @@ export function updateWellness(lineId: string, wellnessPricingId: string): Cart 
   return getCart();
 }
 
+export function removeItem(lineId: string): boolean {
+  let removed = false;
+  cart.groups = cart.groups.map((group) => {
+    const items = group.items.filter((item) => {
+      if (item.id === lineId) { removed = true; return false; }
+      return true;
+    });
+    return { ...group, items };
+  }).filter((group) => group.items.length > 0);
+  recalculate();
+  return removed;
+}
+
+export function mergeGuestItems(items: GuestCartItem[]): { cart: Cart; changes: MergeChange[] } {
+  const changes: MergeChange[] = [];
+  for (const guest of items) {
+    const product = catalog.get(guest.productId);
+    if (!product) {
+      changes.push({ kind: "unavailable", title: "Unknown service", message: "This service is no longer available and was not added." });
+      continue;
+    }
+    let existing: CartItem | undefined;
+    for (const group of cart.groups) {
+      existing = group.items.find((item) => item.productId === guest.productId);
+      if (existing) break;
+    }
+    if (existing) {
+      existing.quantity = Math.min(99, existing.quantity + Math.max(1, guest.quantity));
+      if (product.type === "wellness" && !existing.wellnessPricingId && guest.wellnessPricingId) {
+        existing.wellnessPricingId = guest.wellnessPricingId;
+      }
+      changes.push({ kind: "merged", title: product.title, quantity: existing.quantity, message: `Combined with the existing cart quantity. New quantity: ${existing.quantity}.` });
+    } else {
+      const line: CartItem = {
+        id: `guest-merged-${nextLine++}`,
+        productId: product.id,
+        quantity: Math.min(99, Math.max(1, guest.quantity)),
+        wellnessPricingId: guest.wellnessPricingId,
+        product: structuredClone(product as Product)
+      };
+      const group = cart.groups.find((g) => g.type === product.type);
+      if (group) group.items.push(line);
+      else cart.groups.push({ type: product.type, itemCount: 0, unpricedItems: 0, subtotals: {}, items: [line] });
+      changes.push({ kind: "added", title: product.title, quantity: line.quantity, message: "Added from your guest cart." });
+    }
+  }
+  recalculate();
+  return { cart: getCart(), changes };
+}
