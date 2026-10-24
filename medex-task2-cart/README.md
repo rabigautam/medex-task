@@ -66,3 +66,6 @@ The API uses an in-memory store loaded from `data/task2-cart.json` at server sta
 ## AI usage
 
 AI assistance was used to draft and review portions of the initial project structure and implementation. The author should review, test, and be able to explain every line before submission.
+
+# DEMO LINK AVAILABLE HERE:
+https://www.loom.com/share/ea9a814a352c401ca534537aeff6ef3d
