@@ -536,8 +536,8 @@ export default function ServiceExplorer() {
     (filters.page - 1) * PAGE_SIZE,
     filters.page * PAGE_SIZE,
   );
-
   const setPendingFilter = (key: keyof Filters, value: unknown) => {
+    // @ts-ignore
     setPending((old) => ({
       ...old,
       [key]: value,

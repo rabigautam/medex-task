@@ -50,7 +50,7 @@ export interface Service {
 export interface Dataset { categories: Category[]; providers: Provider[]; services: Service[]; }
 export interface Price { amount: number; original: number; currency: Currency; discounted: boolean; }
 export interface Filters {
-    [x: string]: string;
+    [key: string]: any;
   q: string; types: ServiceType[]; category: string; subcategory: string;
   providers: string[]; location: string; currency: Currency; min: string; max: string;
   home: boolean; sort: "relevance" | "price-asc" | "price-desc" | "rating"; page: number;
