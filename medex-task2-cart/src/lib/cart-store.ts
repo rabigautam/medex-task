@@ -69,3 +69,34 @@ function recalculate() {
   cart.totalItems = cart.groups.reduce((sum, group) => sum + group.itemCount, 0);
 }
 
+function findItem(lineId: string): { group: CartGroup; item: CartItem } | null {
+  for (const group of cart.groups) {
+    const item = group.items.find((row) => row.id === lineId);
+    if (item) return { group, item };
+  }
+  return null;
+}
+
+export function updateQuantity(lineId: string, quantity: number): Cart | null {
+  const found = findItem(lineId);
+  if (!found) return null;
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
+    throw new Error("Quantity must be between 1 and 99.");
+  }
+  found.item.quantity = quantity;
+  recalculate();
+  return getCart();
+}
+
+export function updateWellness(lineId: string, wellnessPricingId: string): Cart | null {
+  const found = findItem(lineId);
+  if (!found) return null;
+  const options = found.item.product.wellnessPricing ?? [];
+  if (!options.some((option) => option.id === wellnessPricingId)) {
+    throw new Error("That duration option is no longer available.");
+  }
+  found.item.wellnessPricingId = wellnessPricingId;
+  recalculate();
+  return getCart();
+}
+
