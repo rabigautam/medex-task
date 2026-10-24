@@ -72,4 +72,7 @@ export interface Order {
   paymentMethod: PaymentMethod;
   idempotencyKey: string;
   createdAt: string;
+  items: CartItem[];
+  subtotals: Record<string, number>;
+
 }

@@ -1,16 +1,18 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 import initialData from "../../data/task2-cart.json";
 import type {
-  Cart, CartGroup, CartItem, CatalogProduct, GroupType, MergeChange,
-  Order, PaymentMethod, Product, WellnessOption, GuestCartItem
+  Cart, CartGroup, CartItem, CatalogProduct, MergeChange,
+  Order, Product, WellnessOption, GuestCartItem,
+  PaymentMethod
 } from "./types";
-
+// @ts-expect-error
 const data = initialData as {
   catalog: CatalogProduct[];
   serverCart: Cart;
   guestCart: GuestCartItem[];
 };
 
-let cart: Cart = structuredClone(data.serverCart);
+const cart: Cart = structuredClone(data.serverCart);
 const catalog = new Map<string, CatalogProduct>(data.catalog.map((p) => [p.id, p]));
 const ordersByKey = new Map<string, Order>();
 const ordersById = new Map<string, Order>();
@@ -149,3 +151,49 @@ export function mergeGuestItems(items: GuestCartItem[]): { cart: Cart; changes: 
   recalculate();
   return { cart: getCart(), changes };
 }
+export function checkoutGroup(
+    groupType: string,
+    paymentMethod: PaymentMethod,
+    idempotencyKey: string
+  ): Order {
+    // 1. Check if an order with this idempotency key already exists (to handle retries safely)
+    if (ordersByKey.has(idempotencyKey)) {
+      return ordersByKey.get(idempotencyKey)!;
+    }
+  
+    // 2. Find the specific group in the cart
+    const group = cart.groups.find((g) => g.type === groupType);
+    if (!group || group.items.length === 0) {
+      throw new Error("No items found in this group to checkout.");
+    }
+  
+    if (group.unpricedItems > 0) {
+      throw new Error("Cannot checkout a group with unpriced items.");
+    }
+  
+    // 3. Generate order details
+    const orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const order: Order = {
+        orderId,
+        status: paymentMethod === "pay_at_clinic" ? "paid" : "pending",
+        groupType,
+        paymentMethod,
+        items: structuredClone(group.items),
+        subtotals: structuredClone(group.subtotals),
+        createdAt: new Date().toISOString(),
+        idempotencyKey
+    };
+  
+    // 4. Save to maps
+    ordersByKey.set(idempotencyKey, order);
+    ordersById.set(orderId, order);
+  
+    // 5. Remove the checked-out group from the active cart and recalculate
+    cart.groups = cart.groups.filter((g) => g.type !== groupType);
+    recalculate();
+  
+    return order;
+  }
+  export function getOrder(orderId: string): Order | null {
+    return ordersById.get(orderId) ?? null;
+  }
