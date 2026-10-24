@@ -67,5 +67,42 @@ The API uses an in-memory store loaded from `data/task2-cart.json` at server sta
 
 AI assistance was used to draft and review portions of the initial project structure and implementation. The author should review, test, and be able to explain every line before submission.
 
+
+
+
+## Checkout State Machine
+
+Each provider/service-type checkout group is handled independently.
+The checkout flow validates the group before submitting the request
+and tracks its processing, success, or failure state.
+
+```
+
+    [*] --> Ready
+    Ready --> Validating: Checkout requested
+    Validating --> Blocked: Validation fails
+    Validating --> Processing: Validation passes
+    Blocked --> Ready: Cart corrected
+    Processing --> Success: Checkout succeeds
+    Processing --> Failed: Checkout fails
+    Failed --> Processing: Retry checkout
+    Success --> [*]
+```
+
+### State descriptions
+
+- **Ready:** The group is available for checkout.
+- **Validating:** Check item availability, prices, and required selections.
+- **Blocked:** The group cannot proceed until validation issues are resolved.
+- **Processing:** Submit the checkout request with an idempotency key.
+- **Success:** The group checkout has completed successfully.
+- **Failed:** The group checkout failed and can be retried independently.
+
+**Note:** Idempotency must also be enforced by the backend and payment
+provider in a production system to prevent duplicate charges.
+
+
 # DEMO LINK AVAILABLE HERE:
 https://www.loom.com/share/ea9a814a352c401ca534537aeff6ef3d
+
+
