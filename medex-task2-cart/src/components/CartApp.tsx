@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect,  useRef, useState } from "react";
 import type { Cart, CartGroup, CartItem, Currency, MergeChange, OrderStatus, PaymentMethod } from "@/lib/types";
 
 const currencyOrder = ["THB", "NPR", "INR"];
