@@ -82,3 +82,12 @@ export type AppointmentSlot = {
     isPast?: boolean;
     availableForGroup: boolean;
   };
+
+
+
+
+
+export type SlotResponse = {
+  slots: Slot[];
+  reason?: string;
+};
