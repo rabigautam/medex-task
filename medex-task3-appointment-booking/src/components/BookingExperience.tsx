@@ -4,11 +4,18 @@
 import { useEffect, useMemo, useState } from "react";
 import AppointmentCalendar from "./AppointmentCalender";
 import TimezoneClocks from "./TimezoneClocks";
+import AppointmentSlotGroups from "./AppointmentSlot";
 import { getNext90Days } from "@/lib/calender";
-import type { Provider, ProviderClosure } from "@/lib/types";
+import { generateAppointmentSlots } from "@/lib/slot";
+import type {
+  BookedSlot,
+  Provider,
+  ProviderClosure,
+} from "@/lib/types";
 
 type BookingContext = {
   closures: ProviderClosure[];
+  bookedSlots: BookedSlot[];
   existingBooking: unknown;
 };
 
@@ -21,9 +28,15 @@ export default function BookingExperience({ providers }: Props) {
     providers[0]?.id ?? null,
   );
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedStartTime, setSelectedStartTime] = useState<string | null>(
+    null,
+  );
+
   const [closures, setClosures] = useState<ProviderClosure[]>([]);
+  const [bookedSlots, setBookedSlots] = useState<BookedSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -42,18 +55,24 @@ export default function BookingExperience({ providers }: Props) {
         }
 
         const data: BookingContext = await response.json();
+
         setClosures(data.closures ?? []);
+        setBookedSlots(data.bookedSlots ?? []);
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
+
         setError("Unable to load availability. Please try again.");
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
 
-    loadBookingContext();
+    void loadBookingContext();
+
     return () => controller.abort();
-  }, []);
+  }, [retryCount]);
 
   const provider = providers.find(
     (item) => item.id === selectedProviderId,
@@ -64,15 +83,56 @@ export default function BookingExperience({ providers }: Props) {
     return getNext90Days(provider, closures);
   }, [provider, closures]);
 
-  function retry() {
-    window.location.reload();
+  const selectedDay = calendarDays.find(
+    (day) => day.date === selectedDate,
+  );
+
+  // Temporary default: use the provider's first specialist.
+  // Add a specialist selector if patients need to choose between specialists.
+  const specialist = provider?.specialists[0];
+
+  const filteredSlots = useMemo(() => {
+    if (
+      !provider ||
+      !specialist ||
+      !selectedDate ||
+      !selectedDay ||
+      !selectedDay.available
+    ) {
+      return [];
+    }
+
+    return generateAppointmentSlots({
+      provider,
+      specialistId: specialist.id,
+      dayOffset: selectedDay.dayOffset,
+      date: selectedDay.date,
+      bookedSlots,
+    });
+  }, [provider, specialist, selectedDate, selectedDay, bookedSlots]);
+
+  function handleProviderSelect(providerId: number) {
+    setSelectedProviderId(providerId);
+    setSelectedDate(null);
+    setSelectedStartTime(null);
+  }
+
+  function handleDateSelect(date: string | null) {
+    setSelectedDate(date);
+    setSelectedStartTime(null);
+  }
+
+  function handleRetry() {
+    setRetryCount((count) => count + 1);
   }
 
   return (
     <main className="shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brandmark" aria-hidden="true">✚</span>
+          <span className="brandmark" aria-hidden="true">
+            ✚
+          </span>
           <span>MedEx</span>
         </div>
         <span className="secure">Secure appointment booking</span>
@@ -82,8 +142,8 @@ export default function BookingExperience({ providers }: Props) {
         <span className="eyebrow">Find the right care</span>
         <h1>Book your appointment</h1>
         <p>
-          Choose a healthcare provider, find a suitable date, and continue
-          to appointment availability.
+          Choose a healthcare provider, find a suitable date, and select an
+          available appointment time.
         </p>
       </section>
 
@@ -101,17 +161,17 @@ export default function BookingExperience({ providers }: Props) {
                   type="button"
                   className={`provider-option${selected ? " selected" : ""}`}
                   aria-pressed={selected}
-                  onClick={() => {
-                    setSelectedProviderId(item.id);
-                    setSelectedDate(null);
-                  }}
+                  onClick={() => handleProviderSelect(item.id)}
                 >
                   <span className="provider-icon" aria-hidden="true">
                     {["✚", "✦", "＋", "✚", "✦", "＋"][index % 6]}
                   </span>
+
                   <span>
                     <strong>{item.name}</strong>
-                    <small>{selected ? "Selected provider" : "Healthcare provider"}</small>
+                    <small>
+                      {selected ? "Selected provider" : "Healthcare provider"}
+                    </small>
                   </span>
                 </button>
               );
@@ -158,7 +218,11 @@ export default function BookingExperience({ providers }: Props) {
           ) : error ? (
             <div className="alert error" role="alert">
               <p>{error}</p>
-              <button type="button" className="secondary" onClick={retry}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={handleRetry}
+              >
                 Retry
               </button>
             </div>
@@ -167,13 +231,49 @@ export default function BookingExperience({ providers }: Props) {
               provider={provider}
               days={calendarDays}
               selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
+              onSelectDate={handleDateSelect}
             />
           ) : (
             <div className="empty">
               <strong>No provider selected</strong>
-              Choose a provider to view appointment dates.
+              <p>Choose a provider to view appointment dates.</p>
             </div>
+          )}
+
+          {selectedDate && !loading && !error && provider && (
+            <>
+              {specialist && (
+                <div className="selected-specialist">
+                  <h3>Appointment specialist</h3>
+                  <p>
+                    {specialist.name} · {specialist.speciality}
+                  </p>
+                </div>
+              )}
+
+              <AppointmentSlotGroups
+                slots={filteredSlots}
+                selectedStartTime={selectedStartTime}
+                onSelectSlot={(slot) => {
+                  if (!slot.isBooked) {
+                    setSelectedStartTime(slot.startTime);
+                  }
+                }}
+              />
+
+              {selectedStartTime && (
+                <div className="selection-summary" role="status">
+                  <strong>Selected appointment</strong>
+                  <p>
+                    {selectedDate} at {selectedStartTime}
+                  </p>
+                  <p>
+                    {provider.name}
+                    {specialist ? ` · ${specialist.name}` : ""}
+                  </p>
+                </div>
+              )}
+            </>
           )}
 
           <p className="footer-note">

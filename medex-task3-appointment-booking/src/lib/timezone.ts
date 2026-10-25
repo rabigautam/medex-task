@@ -127,3 +127,30 @@ export function resolveTimeZone(
     return getDateInTimeZone(date, timeZone);
   }
   
+export function minutesOfDay(time: string): number {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+  
+    if (!match) {
+      throw new Error(`Invalid time format: ${time}. Expected HH:mm.`);
+    }
+  
+    return Number(match[1]) * 60 + Number(match[2]);
+  }
+  
+  export function timeFromMinutes(minutes: number): string {
+    if (
+      !Number.isInteger(minutes) ||
+      minutes < 0 ||
+      minutes >= 1440
+    ) {
+      throw new Error(`Invalid minutes of day: ${minutes}. Expected 0–1439.`);
+    }
+  
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+  
+    return `${String(hours).padStart(2, "0")}:${String(
+      remainingMinutes,
+    ).padStart(2, "0")}`;
+  }
+  
