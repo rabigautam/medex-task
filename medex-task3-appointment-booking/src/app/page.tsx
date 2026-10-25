@@ -1,1 +1,9 @@
-export default function Home() { return <h1>Booking</h1>; }
+
+import { getData } from "@/lib/mock-api";
+import BookingExperience from "@/components/BookingExperience";
+
+export default async function Home() {
+  const data = await getData();
+
+  return <BookingExperience providers={data.providers} />;
+}
