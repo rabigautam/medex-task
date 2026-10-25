@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
+import { TimezoneClocksSkeleton } from "./BookingSkeleton";
 type TimezoneClocksProps = {
   providerName: string;
   providerTimeZone: string;
@@ -57,11 +57,7 @@ export default function TimezoneClocks({
   }, []);
 
   if (!now) {
-    return (
-      <section aria-label="Local times" aria-busy="true">
-        <p>Loading local times…</p>
-      </section>
-    );
+    return <TimezoneClocksSkeleton />;
   }
 
   return (
