@@ -163,3 +163,151 @@ export class BookingConflictError extends Error {
     }
   }
   
+
+export async function getBooking(id: string) {
+    await getData();
+  
+    state.__medexBookings ??= [];
+  
+    const booking = state.__medexBookings.find(
+      (item) => item.bookingId === id,
+    );
+  
+    if (!booking) {
+      throw new BookingNotFoundError();
+    }
+  
+    return structuredClone(booking);
+  }
+  
+  export async function updateBooking(
+    id: string,
+    payload: {
+      providerId: number;
+      specialistId: string;
+      date: string;
+      startTimes: string[];
+    },
+  ) {
+    const data = await getData();
+  
+    state.__medexBookings ??= [];
+  
+    const bookingIndex = state.__medexBookings.findIndex(
+      (item) => item.bookingId === id,
+    );
+  
+    if (bookingIndex === -1) {
+      throw new BookingNotFoundError();
+    }
+  
+    if (
+      !Number.isInteger(payload.providerId) ||
+      !payload.specialistId ||
+      !payload.date ||
+      !Array.isArray(payload.startTimes) ||
+      payload.startTimes.length === 0 ||
+      payload.startTimes.some(
+        (time) => typeof time !== "string" || !time.trim(),
+      ) ||
+      new Set(payload.startTimes).size !== payload.startTimes.length
+    ) {
+      throw new BookingValidationError(
+        "Please provide a valid provider, specialist, date, and unique appointment times.",
+      );
+    }
+  
+    const provider = data.providers.find(
+      (item) => item.id === payload.providerId,
+    );
+  
+    if (!provider) {
+      throw new BookingValidationError("Provider not found.");
+    }
+  
+    const specialistExists = provider.specialists.some(
+      (item) => item.id === payload.specialistId,
+    );
+  
+    if (!specialistExists) {
+      throw new BookingValidationError(
+        "The selected specialist does not belong to this provider.",
+      );
+    }
+  
+    const currentBooking = state.__medexBookings[bookingIndex] as Record<
+      string,
+      unknown
+    > & {
+      providerId: number;
+      specialistId: string;
+      date: string;
+      startTimes: string[];
+      bookingId: string;
+    };
+  
+    // Exclude the current booking's slots when checking for conflicts.
+    const hasConflict = payload.startTimes.some((startTime) =>
+      data.bookedSlots.some(
+        (slot) =>
+          slot.providerId === payload.providerId &&
+          slot.specialistId === payload.specialistId &&
+          slot.date === payload.date &&
+          slot.startTime === startTime &&
+          !(
+            currentBooking.providerId === slot.providerId &&
+            currentBooking.specialistId === slot.specialistId &&
+            currentBooking.date === slot.date &&
+            currentBooking.startTimes.includes(slot.startTime)
+          ),
+      ),
+    );
+  
+    if (process.env.MOCK_API_CONFLICT === "1" || hasConflict) {
+      throw new BookingConflictError(
+        "One or more selected slots are no longer available. Your existing booking has not changed.",
+      );
+    }
+  
+    // Remove the old booking's slots from availability.
+    data.bookedSlots = data.bookedSlots.filter(
+      (slot) =>
+        !(
+          slot.providerId === currentBooking.providerId &&
+          slot.specialistId === currentBooking.specialistId &&
+          slot.date === currentBooking.date &&
+          currentBooking.startTimes.includes(slot.startTime)
+        ),
+    );
+  
+    const updatedBooking = {
+      ...currentBooking,
+      providerId: payload.providerId,
+      specialistId: payload.specialistId,
+      date: payload.date,
+      startTimes: [...payload.startTimes],
+    };
+  
+    state.__medexBookings[bookingIndex] = updatedBooking;
+  
+    // Mark the new slots as booked.
+    for (const startTime of payload.startTimes) {
+      data.bookedSlots.push({
+        providerId: payload.providerId,
+        specialistId: payload.specialistId,
+        date: payload.date,
+        dayOffset: 0,
+        startTime,
+      });
+    }
+  
+    return {
+      status: 200 as const,
+      bookingId: id,
+      providerId: payload.providerId,
+      specialistId: payload.specialistId,
+      date: payload.date,
+      startTimes: [...payload.startTimes],
+    };
+  }
+  
