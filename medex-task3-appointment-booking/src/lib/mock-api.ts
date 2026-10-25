@@ -41,21 +41,125 @@ export async function getProvider(id: number) {
   return data.providers.find(p => p.id === id);
 }
 
-export async function createBooking(payload: { providerId: number; specialistId: string; date: string; startTime: string; numberOfPeople: number }) {
-  const data = await getData();
-  const conflict = process.env.MOCK_API_CONFLICT === "1";
-  const duplicate = data.bookedSlots.some(s => s.providerId === payload.providerId && s.specialistId === payload.specialistId && s.date === payload.date && s.startTime === payload.startTime);
-  if (conflict || duplicate) return { status: 409 as const, message: "That slot was just taken. Please choose one of the alternatives." };
-  const bookingId = `BK-${Date.now().toString(36).toUpperCase()}`;
-  state.__medexBookings?.push({ ...payload, bookingId });
-  for (let i = 0; i < payload.numberOfPeople; i++) {
-    data.bookedSlots.push({ providerId: payload.providerId, specialistId: payload.specialistId, date: payload.date, dayOffset: -1, startTime: payload.startTime });
+export async function createBooking(payload: {
+    providerId: number;
+    specialistId: string;
+    date: string;
+    startTimes: string[];
+    numberOfPeople: number;
+  }) {
+    const data = await getData();
+  
+    if (
+      !Number.isInteger(payload.numberOfPeople) ||
+      payload.numberOfPeople < 1 ||
+      payload.numberOfPeople > 4
+    ) {
+      return {
+        status: 400 as const,
+        message: "Number of people must be between 1 and 4.",
+      };
+    }
+  
+    if (
+      !Array.isArray(payload.startTimes) ||
+      payload.startTimes.length !== payload.numberOfPeople
+    ) {
+      return {
+        status: 400 as const,
+        message: "Select one appointment slot for each person.",
+      };
+    }
+  
+    if (new Set(payload.startTimes).size !== payload.startTimes.length) {
+      return {
+        status: 400 as const,
+        message: "Selected appointment times must be unique.",
+      };
+    }
+  
+    if (process.env.MOCK_API_CONFLICT === "1") {
+      return {
+        status: 409 as const,
+        message:
+          "That slot was just taken. Please choose another available slot.",
+      };
+    }
+  
+    const hasConflict = payload.startTimes.some((startTime) =>
+      data.bookedSlots.some(
+        (slot) =>
+          slot.providerId === payload.providerId &&
+          slot.specialistId === payload.specialistId &&
+          slot.date === payload.date &&
+          slot.startTime === startTime
+      )
+    );
+  
+    if (hasConflict) {
+      return {
+        status: 409 as const,
+        message:
+          "One or more selected slots are no longer available. Please choose alternatives.",
+      };
+    }
+  
+    const bookingId = `BK-${Date.now().toString(36).toUpperCase()}-${Math.random()
+      .toString(36)
+      .slice(2, 7)
+      .toUpperCase()}`;
+  
+    state.__medexBookings ??= [];
+  
+    state.__medexBookings.push({
+      ...payload,
+      startTimes: [...payload.startTimes],
+      bookingId,
+    });
+  
+    for (const startTime of payload.startTimes) {
+      data.bookedSlots.push({
+        providerId: payload.providerId,
+        specialistId: payload.specialistId,
+        date: payload.date,
+        dayOffset: 0,
+        startTime,
+      });
+    }
+  
+    return {
+      status: 201 as const,
+      bookingId,
+      numberOfPeople: payload.numberOfPeople,
+      startTimes: payload.startTimes,
+    };
   }
-  return { status: 201 as const, bookingId };
-}
 
 export async function rescheduleBooking(id: string, payload: { date: string; startTime: string }) {
   await getData();
   if (process.env.MOCK_API_CONFLICT === "1") return { status: 409 as const, message: "That slot was just taken. Your existing booking has not changed." };
   return { status: 200 as const, bookingId: id };
 }
+export class BookingConflictError extends Error {
+    constructor(
+      message = "One or more selected appointment slots are no longer available.",
+    ) {
+      super(message);
+      this.name = "BookingConflictError";
+    }
+  }
+  
+  export class BookingNotFoundError extends Error {
+    constructor(message = "Booking not found.") {
+      super(message);
+      this.name = "BookingNotFoundError";
+    }
+  }
+  
+  export class BookingValidationError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "BookingValidationError";
+    }
+  }
+  

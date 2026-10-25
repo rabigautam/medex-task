@@ -154,3 +154,160 @@ export function minutesOfDay(time: string): number {
     ).padStart(2, "0")}`;
   }
   
+  /**
+ * Gets the weekday for a specific date in a given timezone.
+ * Returns: "Monday", "Tuesday", etc.
+ */
+export function weekdayInZone(date: Date, timeZone: string): string {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "long",
+    }).format(date);
+  }
+  
+  /**
+   * Converts a local date and time in a timezone into a UTC Date instant.
+   * Example: localDateTimeToInstant("2026-10-25", "10:00", "Asia/Kathmandu")
+   */
+  export function localDateTimeToInstant(
+    date: string,
+    time: string,
+    timeZone: string,
+  ): Date {
+    const [year, month, day] = date.split("-").map(Number);
+    const [hour, minute] = time.split(":").map(Number);
+  
+    if (
+      !year || !month || !day ||
+      !Number.isInteger(hour) || hour < 0 || hour > 23 ||
+      !Number.isInteger(minute) || minute < 0 || minute > 59
+    ) {
+      throw new Error("Invalid date or time.");
+    }
+  
+    // Interpret the supplied date/time as UTC initially.
+    const targetUtc = Date.UTC(year, month - 1, day, hour, minute);
+  
+    // Use the timezone's formatted parts to determine its UTC offset.
+    const formatter = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+  
+    let instant = targetUtc;
+  
+    // Recalculate to account for timezone offset and daylight saving time.
+    for (let i = 0; i < 4; i++) {
+      const parts = formatter.formatToParts(new Date(instant));
+      const values = Object.fromEntries(
+        parts
+          .filter((part) => part.type !== "literal")
+          .map((part) => [part.type, Number(part.value)]),
+      );
+  
+      const representedUtc = Date.UTC(
+        values.year,
+        values.month - 1,
+        values.day,
+        values.hour,
+        values.minute,
+        values.second,
+      );
+  
+      const offset = representedUtc - instant;
+      const nextInstant = targetUtc - offset;
+  
+      if (nextInstant === instant) break;
+      instant = nextInstant;
+    }
+  
+    // Validate that this local time actually exists (DST can skip local times).
+    const resultParts = formatter.formatToParts(new Date(instant));
+    const result = Object.fromEntries(
+      resultParts
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, Number(part.value)]),
+    );
+  
+    if (
+      result.year !== year ||
+      result.month !== month ||
+      result.day !== day ||
+      result.hour !== hour ||
+      result.minute !== minute
+    ) {
+      throw new Error("This local time does not exist in the specified timezone.");
+    }
+  
+    return new Date(instant);
+  }
+
+export function isSlotInFuture(
+    date: string,
+    time: string,
+    timeZone: string,
+    now: Date = new Date(),
+  ): boolean {
+    const slotInstant = localDateTimeToInstant(date, time, timeZone);
+  
+    return slotInstant.getTime() > now.getTime();
+  }
+  
+export function addDaysToDate(dateKey: string, days: number): string {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  
+    if (!match) {
+      throw new Error(`Invalid date format: ${dateKey}. Expected YYYY-MM-DD.`);
+    }
+  
+    if (!Number.isInteger(days)) {
+      throw new Error("Days must be an integer.");
+    }
+  
+    const [, year, month, day] = match;
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  
+    // Reject invalid calendar dates such as February 30.
+    if (
+      date.getUTCFullYear() !== Number(year) ||
+      date.getUTCMonth() !== Number(month) - 1 ||
+      date.getUTCDate() !== Number(day)
+    ) {
+      throw new Error(`Invalid calendar date: ${dateKey}.`);
+    }
+  
+    date.setUTCDate(date.getUTCDate() + days);
+  
+    return [
+      date.getUTCFullYear(),
+      String(date.getUTCMonth() + 1).padStart(2, "0"),
+      String(date.getUTCDate()).padStart(2, "0"),
+    ].join("-");
+  }
+
+  export function formatInZone(
+    instant: Date,
+    timeZone: string,
+  ): string {
+    if (Number.isNaN(instant.getTime())) {
+      throw new Error("Invalid date instant.");
+    }
+  
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      timeZoneName: "short",
+    }).format(instant);
+  }
+    

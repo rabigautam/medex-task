@@ -1,4 +1,5 @@
-import type { BookedSlot, Provider } from "@/lib/types";
+import type { BookedSlot, Closure, Provider, Slot, SlotResponse, Specialist } from "@/lib/types";
+import { minutesOfDay, dateInZone, timeFromMinutes, localDateTimeToInstant, weekdayInZone } from "./timezone";
 
 export type AppointmentSlot = {
   startTime: string;
@@ -370,4 +371,67 @@ export function generateAppointmentSlots({
   }
 
   return slots;
+}
+
+type BuildSlotsArgs = {
+  provider: Provider;
+  specialist: Specialist;
+  date: string;
+  bookedSlots: BookedSlot[];
+  closures: Closure[];
+  now?: Date;
+};
+
+export function buildSlots({
+  provider, specialist, date, bookedSlots, closures, now = new Date()
+}: BuildSlotsArgs): SlotResponse {
+  const closure = closures.find(c => c.providerId === provider.id && c.date === date);
+  if (closure) return { slots: [], reason: closure.reason };
+
+  const zone = provider.timezone;
+  const weekday = weekdayInZone(new Date(`${date}T12:00:00Z`), zone);
+  const clinicHours = provider.daySchedules[weekday];
+  if (!clinicHours) return { slots: [], reason: "The clinic is closed on this day." };
+
+  const start = Math.max(
+    minutesOfDay(clinicHours.startTime),
+    minutesOfDay(specialist.consultation.startTime)
+  );
+  const end = Math.min(
+    minutesOfDay(clinicHours.endTime),
+    minutesOfDay(specialist.consultation.endTime)
+  );
+  const duration = specialist.consultation.durationInMinutes;
+  const step = duration + specialist.consultation.bufferInMinutes;
+  if (end - start < duration || step <= 0) return { slots: [], reason: "No appointment times fit within both schedules." };
+
+  const providerToday = dateInZone(now, zone);
+  const nowParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(now);
+  const currentHour = Number(nowParts.find(part => part.type === "hour")?.value ?? 0);
+  const currentMinute = Number(nowParts.find(part => part.type === "minute")?.value ?? 0);
+  const nowMinutes = currentHour * 60 + currentMinute;
+  const booked = new Set(bookedSlots
+    .filter(b => b.providerId === provider.id && b.specialistId === specialist.id && b.date === date)
+    .map(b => b.startTime));
+
+  const slots: Slot[] = [];
+  for (let startMinute = start; startMinute + duration <= end; startMinute += step) {
+    const startTime = timeFromMinutes(startMinute);
+    if (date === providerToday && startMinute <= nowMinutes) continue;
+    // Past-date filtering is also applied by the UI; keep the API defensive.
+    if (date < providerToday) continue;
+    slots.push({
+        startTime,
+        endTime: timeFromMinutes(startMinute + duration),
+        isBooked: booked.has(startTime),
+        availableForGroup: false
+    });
+  }
+  return { slots };
+}
+
+export function isSlotInFuture(date: string, time: string, timeZone: string, now = new Date()): boolean {
+  return localDateTimeToInstant(date, time, timeZone).getTime() > now.getTime();
 }

@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import { getData } from "@/lib/mock-api";
 
@@ -6,8 +7,9 @@ export async function GET() {
     const data = await getData();
 
     return NextResponse.json({
-      closures: data.closures,
-      existingBooking: data.existingBooking,
+      closures: data.closures ?? [],
+      bookedSlots: data.bookedSlots ?? [],
+      existingBooking: data.existingBooking ?? null,
     });
   } catch {
     return NextResponse.json(
