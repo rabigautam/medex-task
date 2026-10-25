@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -5,10 +6,7 @@ import AppointmentCalendar from "./AppointmentCalender";
 import TimezoneClocks from "./TimezoneClocks";
 import AppointmentSlot from "./AppointmentSlot";
 import { getNext90Days } from "@/lib/calender";
-import {
-    CalendarSkeleton,
-    SlotGridSkeleton,
-  } from "./BookingSkeleton";
+import { CalendarSkeleton, SlotGridSkeleton } from "./BookingSkeleton";
 import {
   generateAppointmentSlots,
   getSpecialistAvailabilityForDate,
@@ -30,11 +28,11 @@ type Props = {
 };
 
 export default function BookingExperience({ providers }: Props) {
-  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(
-    providers[0]?.id ?? null,
-  );
-
   const initialProvider = providers[0];
+
+  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(
+    initialProvider?.id ?? null,
+  );
 
   const [selectedSpecialistId, setSelectedSpecialistId] = useState<
     string | null
@@ -50,31 +48,65 @@ export default function BookingExperience({ providers }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(true);
 
+  // Keep network status separate from the customer's booking selections.
+  useEffect(() => {
+    function updateNetworkStatus() {
+      setIsOnline(navigator.onLine);
+    }
+
+    updateNetworkStatus();
+
+    window.addEventListener("online", updateNetworkStatus);
+    window.addEventListener("offline", updateNetworkStatus);
+
+    return () => {
+      window.removeEventListener("online", updateNetworkStatus);
+      window.removeEventListener("offline", updateNetworkStatus);
+    };
+  }, []);
+
+  // Refresh availability without resetting provider, specialist, date, or time.
   useEffect(() => {
     const controller = new AbortController();
 
     async function loadBookingContext() {
+      setLoading(true);
+      setError(null);
+
       try {
-        setLoading(true);
-        setError(null);
+        if (!navigator.onLine) {
+          throw new Error("OFFLINE");
+        }
 
         const response = await fetch("/api/booking-context", {
           signal: controller.signal,
+          cache: "no-store",
         });
 
         if (!response.ok) {
-          throw new Error("Unable to load booking availability.");
+          throw new Error("Unable to load appointment availability.");
         }
 
         const data: BookingContext = await response.json();
 
-        setClosures(data.closures ?? []);
-        setBookedSlots(data.bookedSlots ?? []);
-      } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") return;
+        if (!Array.isArray(data.closures) || !Array.isArray(data.bookedSlots)) {
+          throw new Error("The availability response is invalid.");
+        }
 
-        setError("Unable to load availability. Please try again.");
+        setClosures(data.closures);
+        setBookedSlots(data.bookedSlots);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+
+        if (err instanceof Error && err.message === "OFFLINE") {
+          setError("You are offline. Reconnect to refresh availability.");
+        } else {
+          setError(
+            "Unable to refresh availability. Your selections have been kept. Please try again.",
+          );
+        }
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -121,6 +153,7 @@ export default function BookingExperience({ providers }: Props) {
       !selectedDate ||
       !selectedDay ||
       !selectedDay.available ||
+      !specialistAvailability ||
       loading ||
       error
     ) {
@@ -139,6 +172,7 @@ export default function BookingExperience({ providers }: Props) {
     specialist,
     selectedDate,
     selectedDay,
+    specialistAvailability,
     bookedSlots,
     loading,
     error,
@@ -162,10 +196,26 @@ export default function BookingExperience({ providers }: Props) {
     setSelectedDate(date);
     setSelectedStartTime(null);
   }
-
+  function handleSlotSelect(slot: import("@/lib/slot").AppointmentSlot) {
+    if (!isOnline || loading || error) return;
+    setSelectedStartTime(slot.startTime);
+  }
   function handleRetry() {
+    if (!navigator.onLine) {
+      setIsOnline(false);
+      setError("You are offline. Reconnect before retrying.");
+      return;
+    }
+
+    setError(null);
     setRetryCount((count) => count + 1);
   }
+
+  const selectedSlotIsAvailable = filteredSlots.some(
+    (slot) =>
+      slot.startTime === selectedStartTime &&
+      !slot.isBooked,
+  );
 
   return (
     <main className="shell">
@@ -187,6 +237,24 @@ export default function BookingExperience({ providers }: Props) {
           and select an available appointment time.
         </p>
       </section>
+
+      {!isOnline && (
+        <div className="alert warning" role="alert">
+          <strong>You are offline.</strong>
+          <p>
+            Your current selections are preserved, but availability may be
+            outdated. Reconnect before continuing.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            onClick={handleRetry}
+            disabled={loading}
+          >
+            Retry availability
+          </button>
+        </div>
+      )}
 
       <div className="layout">
         <aside className="panel sidebar">
@@ -250,32 +318,33 @@ export default function BookingExperience({ providers }: Props) {
             />
           )}
 
-        {loading ? (
-        <CalendarSkeleton />
-        ) : error ? (
-        <div className="alert error" role="alert">
-            <p>{error}</p>
-            <button
-            type="button"
-            className="secondary"
-            onClick={handleRetry}
-            >
-            Retry
-            </button>
-        </div>
-        ) : provider ? (
-        <AppointmentCalendar
-            provider={provider}
-            days={calendarDays}
-            selectedDate={selectedDate}
-            onSelectDate={handleDateSelect}
-        />
-        ) : (
-        <div className="empty">
-            <strong>No provider selected</strong>
-            <p>Choose a provider to view appointment dates.</p>
-        </div>
-        )}
+          {loading ? (
+            <CalendarSkeleton />
+          ) : error ? (
+            <div className="alert error" role="alert">
+              <p>{error}</p>
+              <button
+                type="button"
+                className="secondary"
+                onClick={handleRetry}
+                disabled={!isOnline || loading}
+              >
+                Retry
+              </button>
+            </div>
+          ) : provider ? (
+            <AppointmentCalendar
+              provider={provider}
+              days={calendarDays}
+              selectedDate={selectedDate}
+              onSelectDate={handleDateSelect}
+            />
+          ) : (
+            <div className="empty" role="status">
+              <strong>No provider selected</strong>
+              <p>Choose a provider to view appointment dates.</p>
+            </div>
+          )}
 
           {provider && !loading && !error && (
             <section className="specialist-picker">
@@ -301,8 +370,7 @@ export default function BookingExperience({ providers }: Props) {
                         <strong>{item.name}</strong>
                         <span>{item.speciality}</span>
                         <small>
-                          Consultation:{" "}
-                          {item.consultation.startTime} –{" "}
+                          Consultation: {item.consultation.startTime} –{" "}
                           {item.consultation.endTime}
                         </small>
                       </button>
@@ -313,28 +381,91 @@ export default function BookingExperience({ providers }: Props) {
             </section>
           )}
 
-        {selectedDate && provider && (
-        loading ? (
-            <SlotGridSkeleton />
-        ) : error ? (
-            <div className="alert error" role="alert">
-            <p>{error}</p>
-            <button
-                type="button"
-                className="secondary"
-                onClick={handleRetry}
-            >
-                Retry
-            </button>
-            </div>
-        ) : (
-            <>
-            {/* Place your existing selectedDay availability check,
-                specialistAvailability section, AppointmentSlot,
-                and selection summary here unchanged. */}
-            </>
-        )
-        )}
+          {selectedDate && provider && (
+            <section className="appointment-times" aria-labelledby="times-heading">
+              <h2 id="times-heading">Available appointment times</h2>
+
+              <p>
+                Selected date: <strong>{selectedDate}</strong>
+                {specialist ? ` · ${specialist.name}` : ""}
+              </p>
+
+              {loading ? (
+                <SlotGridSkeleton />
+              ) : error ? (
+                <div className="alert error" role="alert">
+                  <p>Appointment times could not be refreshed.</p>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={handleRetry}
+                    disabled={!isOnline}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : !specialist ? (
+                <div className="empty" role="status">
+                  Choose a specialist to view available times.
+                </div>
+              ) : !selectedDay ? (
+                <div className="empty" role="status">
+                  This date is outside the current availability window.
+                  Please select another date.
+                </div>
+              ) : !selectedDay.available ? (
+                <div className="empty" role="status">
+                  No appointments are available on this date. Please select
+                  another date.
+                </div>
+              ) : !specialistAvailability ? (
+                <div className="empty" role="status">
+                  This specialist is not available on the selected date.
+                  Please choose another date or specialist.
+                </div>
+              ) : filteredSlots.length === 0 ? (
+                <div className="empty" role="status">
+                  No appointment times are available for this date. Please
+                  choose another date.
+                </div>
+              ) : (
+                <AppointmentSlot
+                  slots={filteredSlots}
+                  selectedStartTime={selectedStartTime}
+                  onSelectSlot={handleSlotSelect}
+                />
+              )}
+
+              {selectedStartTime && selectedSlotIsAvailable && (
+                <div className="selection-summary" aria-live="polite">
+                  <h3>Your selection</h3>
+                  <p>
+                    <strong>Provider:</strong> {provider.name}
+                  </p>
+                  <p>
+                    <strong>Specialist:</strong> {specialist?.name}
+                  </p>
+                  <p>
+                    <strong>Date:</strong> {selectedDate}
+                  </p>
+                  <p>
+                    <strong>Time:</strong> {selectedStartTime}
+                  </p>
+                  <p>
+                    This is a selection only. Your appointment is not yet
+                    confirmed.
+                  </p>
+                </div>
+              )}
+
+              {selectedStartTime && !selectedSlotIsAvailable && !loading && !error && (
+                <div className="alert warning" role="status">
+                  Your previously selected time is no longer available.
+                  Please choose another appointment time.
+                </div>
+              )}
+            </section>
+          )}
 
           <p className="footer-note">
             Availability can change while you book. Your appointment is not

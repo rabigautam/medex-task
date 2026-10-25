@@ -1,10 +1,9 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import type { AppointmentSlot, BookableHours } from "@/lib/slot";
-import {
-  formatSlotTime,
-  groupSlotsByPeriod,
-} from "@/lib/slot";
+import { formatSlotTime, groupSlotsByPeriod } from "@/lib/slot";
 
 type Props = {
   slots: AppointmentSlot[];
@@ -36,6 +35,8 @@ const PERIODS = [
   },
 ] as const;
 
+type PeriodKey = (typeof PERIODS)[number]["key"];
+
 export default function AppointmentSlot({
   slots,
   selectedStartTime,
@@ -49,27 +50,167 @@ export default function AppointmentSlot({
   const isUnavailable = (slot: AppointmentSlot) =>
     slot.isBooked || Boolean(slot.isPast);
 
-  const availableCount = slots.filter(
-    (slot) => !isUnavailable(slot),
-  ).length;
+  const availableSlots = useMemo(
+    () => slots.filter((slot) => !isUnavailable(slot)),
+    [slots],
+  );
+
+  const availableCount = availableSlots.length;
+
+  const firstAvailableStartTime = availableSlots[0]?.startTime ?? null;
+
+  const [focusedStartTime, setFocusedStartTime] = useState<string | null>(
+    selectedStartTime ?? firstAvailableStartTime,
+  );
+
+  const [announcement, setAnnouncement] = useState("");
+
+  const slotRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  // Keep the roving tab stop valid if the selected date or availability changes.
+  useEffect(() => {
+    const focusedStillAvailable = availableSlots.some(
+      (slot) => slot.startTime === focusedStartTime,
+    );
+
+    const selectedStillAvailable = availableSlots.some(
+      (slot) => slot.startTime === selectedStartTime,
+    );
+
+    if (!focusedStillAvailable) {
+      setFocusedStartTime(
+        selectedStillAvailable
+          ? selectedStartTime
+          : firstAvailableStartTime,
+      );
+    }
+  }, [
+    availableSlots,
+    focusedStartTime,
+    selectedStartTime,
+    firstAvailableStartTime,
+  ]);
+
+  const tabStopStartTime =
+    availableSlots.find((slot) => slot.startTime === focusedStartTime)
+      ?.startTime ??
+    availableSlots.find((slot) => slot.startTime === selectedStartTime)
+      ?.startTime ??
+    firstAvailableStartTime;
 
   const hasHoursInfo = Boolean(specialistHours && providerHours);
   const hasNoOverlap = hasHoursInfo && !bookableHours;
+
   const isRestricted =
     hasHoursInfo &&
     Boolean(bookableHours) &&
     (bookableHours!.startTime !== specialistHours!.startTime ||
       bookableHours!.endTime !== specialistHours!.endTime);
 
+  function focusSlot(slot: AppointmentSlot | undefined) {
+    if (!slot || isUnavailable(slot)) return;
+
+    setFocusedStartTime(slot.startTime);
+    setAnnouncement(
+      `${formatSlotTime(slot.startTime)} selected as the focused appointment time.`,
+    );
+
+    // Focus after React has had a chance to update the roving tab index.
+    requestAnimationFrame(() => {
+      slotRefs.current.get(slot.startTime)?.focus();
+    });
+  }
+
+  function handleSlotKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    slot: AppointmentSlot,
+    periodKey: PeriodKey,
+  ) {
+    const currentPeriodIndex = PERIODS.findIndex(
+      (period) => period.key === periodKey,
+    );
+
+    const currentPeriodSlots = grouped[periodKey].filter(
+      (item) => !isUnavailable(item),
+    );
+
+    const currentIndex = currentPeriodSlots.findIndex(
+      (item) => item.startTime === slot.startTime,
+    );
+
+    let target: AppointmentSlot | undefined;
+
+    switch (event.key) {
+      case "ArrowLeft":
+        event.preventDefault();
+        target = availableSlots[
+          Math.max(0, availableSlots.findIndex(
+            (item) => item.startTime === slot.startTime,
+          ) - 1)
+        ];
+        break;
+
+      case "ArrowRight": {
+        event.preventDefault();
+        const index = availableSlots.findIndex(
+          (item) => item.startTime === slot.startTime,
+        );
+        target = availableSlots[Math.min(index + 1, availableSlots.length - 1)];
+        break;
+      }
+
+      case "ArrowUp":
+      case "ArrowDown": {
+        event.preventDefault();
+
+        const direction = event.key === "ArrowUp" ? -1 : 1;
+        const targetPeriod = PERIODS[currentPeriodIndex + direction];
+
+        if (targetPeriod) {
+          const targetPeriodSlots = grouped[targetPeriod.key].filter(
+            (item) => !isUnavailable(item),
+          );
+
+          if (targetPeriodSlots.length > 0) {
+            // Keep a similar position in the adjacent time period.
+            const targetIndex = Math.min(
+              Math.max(currentIndex, 0),
+              targetPeriodSlots.length - 1,
+            );
+            target = targetPeriodSlots[targetIndex];
+          }
+        }
+        break;
+      }
+
+      case "Home":
+        event.preventDefault();
+        target = availableSlots[0];
+        break;
+
+      case "End":
+        event.preventDefault();
+        target = availableSlots[availableSlots.length - 1];
+        break;
+
+      default:
+        return;
+    }
+
+    focusSlot(target);
+  }
+
   return (
     <section className="slot-periods" aria-label="Appointment times">
       {hasHoursInfo && (
         <div className="slot-hours-info" role="note">
           <h2>Specialist consultation hours</h2>
+
           <p>
             Advertised hours: {formatSlotTime(specialistHours!.startTime)} –{" "}
             {formatSlotTime(specialistHours!.endTime)}
           </p>
+
           {hasNoOverlap ? (
             <p>
               This specialist&apos;s consultation hours do not overlap with
@@ -100,6 +241,10 @@ export default function AppointmentSlot({
 
         <span className="pill">{availableCount} available</span>
       </div>
+
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </p>
 
       {PERIODS.map((period) => {
         const periodSlots = grouped[period.key];
@@ -134,7 +279,11 @@ export default function AppointmentSlot({
                 No appointment times in this period.
               </div>
             ) : (
-              <div className="slots-grid">
+              <div
+                className="slots-grid"
+                role="group"
+                aria-label={`${period.title} appointment times`}
+              >
                 {periodSlots.map((slot) => {
                   const selected = slot.startTime === selectedStartTime;
                   const unavailable = isUnavailable(slot);
@@ -150,6 +299,13 @@ export default function AppointmentSlot({
                   return (
                     <button
                       key={`${slot.startTime}-${slot.endTime}`}
+                      ref={(element) => {
+                        if (element) {
+                          slotRefs.current.set(slot.startTime, element);
+                        } else {
+                          slotRefs.current.delete(slot.startTime);
+                        }
+                      }}
                       type="button"
                       className={[
                         "slot",
@@ -160,6 +316,11 @@ export default function AppointmentSlot({
                         .filter(Boolean)
                         .join(" ")}
                       disabled={unavailable}
+                      tabIndex={
+                        !unavailable && slot.startTime === tabStopStartTime
+                          ? 0
+                          : -1
+                      }
                       aria-pressed={selected}
                       aria-label={`${formatSlotTime(slot.startTime)}, ${status}`}
                       title={
@@ -169,7 +330,17 @@ export default function AppointmentSlot({
                             ? "This appointment time has already passed"
                             : `${formatSlotTime(slot.startTime)} – ${formatSlotTime(slot.endTime)}`
                       }
-                      onClick={() => onSelectSlot(slot)}
+                      onFocus={() => setFocusedStartTime(slot.startTime)}
+                      onKeyDown={(event) =>
+                        handleSlotKeyDown(event, slot, period.key)
+                      }
+                      onClick={() => {
+                        setFocusedStartTime(slot.startTime);
+                        setAnnouncement(
+                          `${formatSlotTime(slot.startTime)} appointment time selected.`,
+                        );
+                        onSelectSlot(slot);
+                      }}
                     >
                       <strong>{formatSlotTime(slot.startTime)}</strong>
                       <small>

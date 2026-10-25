@@ -1,8 +1,8 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
 import { TimezoneClocksSkeleton } from "./BookingSkeleton";
+
 type TimezoneClocksProps = {
   providerName: string;
   providerTimeZone: string;
@@ -32,8 +32,51 @@ function formatDate(date: Date, timeZone: string): string {
       day: "numeric",
     }).format(date);
   } catch {
-    return "";
+    return "Date unavailable";
   }
+}
+
+function getIsoTime(date: Date, timeZone: string): string | undefined {
+  try {
+    // Validate the timezone before exposing the timestamp.
+    new Intl.DateTimeFormat("en", { timeZone }).format(date);
+    return date.toISOString();
+  } catch {
+    return undefined;
+  }
+}
+
+function ClockCard({
+  title,
+  description,
+  date,
+  timeZone,
+}: {
+  title: string;
+  description: string;
+  date: Date;
+  timeZone: string;
+}) {
+  const clock = formatClock(date, timeZone);
+  const isoTime = getIsoTime(date, timeZone);
+
+  return (
+    <article className="timezone-clock">
+      <h3>{title}</h3>
+      <p>{description}</p>
+
+      <p className="timezone-clock__time" aria-live="off">
+        {isoTime ? (
+          <time dateTime={isoTime}>{clock}</time>
+        ) : (
+          <span>{clock}</span>
+        )}
+      </p>
+
+      <p>{formatDate(date, timeZone)}</p>
+      <small>Timezone: {timeZone}</small>
+    </article>
+  );
 }
 
 export default function TimezoneClocks({
@@ -45,9 +88,11 @@ export default function TimezoneClocks({
 
   useEffect(() => {
     setNow(new Date());
-    setCustomerTimeZone(
-      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-    );
+
+    const detectedTimeZone =
+      Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    setCustomerTimeZone(detectedTimeZone || "UTC");
 
     const timer = window.setInterval(() => {
       setNow(new Date());
@@ -61,29 +106,26 @@ export default function TimezoneClocks({
   }
 
   return (
-    <section aria-label="Appointment timezones">
-      <h2>Local times</h2>
+    <section
+      className="timezone-clocks-section"
+      aria-labelledby="timezone-clocks-heading"
+    >
+      <h2 id="timezone-clocks-heading">Local times</h2>
 
       <div className="timezone-clocks">
-        <article className="timezone-clock">
-          <h3>{providerName}</h3>
-          <p>Provider local time</p>
-          <p className="timezone-clock__time">
-            <time>{formatClock(now, providerTimeZone)}</time>
-          </p>
-          <p>{formatDate(now, providerTimeZone)}</p>
-          <small>{providerTimeZone}</small>
-        </article>
+        <ClockCard
+          title={providerName}
+          description="Provider local time"
+          date={now}
+          timeZone={providerTimeZone}
+        />
 
-        <article className="timezone-clock">
-          <h3>Your location</h3>
-          <p>Customer local time</p>
-          <p className="timezone-clock__time">
-            <time>{formatClock(now, customerTimeZone)}</time>
-          </p>
-          <p>{formatDate(now, customerTimeZone)}</p>
-          <small>{customerTimeZone}</small>
-        </article>
+        <ClockCard
+          title="Your location"
+          description="Customer local time"
+          date={now}
+          timeZone={customerTimeZone}
+        />
       </div>
     </section>
   );
