@@ -244,5 +244,84 @@ import {
   
       expect(slots).toEqual([]);
     });
+
+it("disables a slot that is already booked", () => {
+    const bookings: BookedSlot[] = [
+      {
+        providerId: 1,
+        specialistId: "spec-1",
+        date: "2026-10-26",
+        dayOffset: 0,
+        startTime: "09:30",
+      },
+    ];
+  
+    const slots = generateAppointmentSlots({
+      provider,
+      specialistId: "spec-1",
+      date: "2026-10-26",
+      dayOffset: 0,
+      bookedSlots: bookings,
+    });
+  
+    expect(slots.find((slot) => slot.startTime === "09:30"))
+      .toMatchObject({
+        isBooked: true,
+        availableForGroup: false,
+      });
+  });
+  
+  it("does not mark a slot booked for a different date", () => {
+    const bookings: BookedSlot[] = [
+      {
+        providerId: 1,
+        specialistId: "spec-1",
+        date: "2026-10-27",
+        dayOffset: 1,
+        startTime: "09:30",
+      },
+    ];
+  
+    const slots = generateAppointmentSlots({
+      provider,
+      specialistId: "spec-1",
+      date: "2026-10-26",
+      dayOffset: 0,
+      bookedSlots: bookings,
+    });
+  
+    expect(slots.find((slot) => slot.startTime === "09:30"))
+      .toMatchObject({
+        isBooked: false,
+        availableForGroup: true,
+      });
+  });
+  
+  it("does not mark a slot booked for a different specialist", () => {
+    const bookings: BookedSlot[] = [
+      {
+        providerId: 1,
+        specialistId: "spec-2",
+        date: "2026-10-26",
+        dayOffset: 0,
+        startTime: "09:30",
+      },
+    ];
+  
+    const slots = generateAppointmentSlots({
+      provider,
+      specialistId: "spec-1",
+      date: "2026-10-26",
+      dayOffset: 0,
+      bookedSlots: bookings,
+    });
+  
+    expect(slots.find((slot) => slot.startTime === "09:30"))
+      .toMatchObject({
+        isBooked: false,
+        availableForGroup: true,
+      });
+  });
+  
   });
   
