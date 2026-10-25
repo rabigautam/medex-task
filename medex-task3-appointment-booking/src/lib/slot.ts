@@ -6,7 +6,7 @@ export type AppointmentSlot = {
   endTime: string;
   isBooked: boolean;
   availableForGroup: boolean;
-  isPast:boolean;
+  isPast: boolean;
 };
 
 export type SlotPeriod = "morning" | "afternoon" | "evening";
@@ -91,6 +91,30 @@ function toTime(minutes: number): string {
   ).padStart(2, "0")}`;
 }
 
+export function getProviderLocalDateTime(timeZone: string): {
+  date: string;
+  time: string;
+} {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    time: `${values.hour}:${values.minute}`,
+  };
+}
+
 export function generateAppointmentSlots({
   provider,
   specialistId,
@@ -98,10 +122,7 @@ export function generateAppointmentSlots({
   date,
   bookedSlots,
 }: GenerateSlotsParams): AppointmentSlot[] {
-  // Validate YYYY-MM-DD and calculate the weekday in UTC
-  // to avoid local timezone shifts.
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-
   if (!dateMatch) return [];
 
   const year = Number(dateMatch[1]);
@@ -117,7 +138,6 @@ export function generateAppointmentSlots({
     return [];
   }
 
-  const weekdayIndex = dateObject.getUTCDay();
   const weekdayNames = [
     "sunday",
     "monday",
@@ -128,15 +148,36 @@ export function generateAppointmentSlots({
     "saturday",
   ];
 
-  const schedule = provider.daySchedules[weekdayNames[weekdayIndex]];
+  const schedule =
+    provider.daySchedules[weekdayNames[dateObject.getUTCDay()]];
+
   const specialist = provider.specialists.find(
     (item) => item.id === specialistId,
   );
 
   if (!schedule || !specialist) return [];
 
-  const opening = toMinutes(schedule.startTime);
-  const closing = toMinutes(schedule.endTime);
+  // Restrict slots to the overlap of provider and specialist working hours.
+  // This assumes the specialist's consultation startTime/endTime represent
+  // their working window; adjust if your data model stores it elsewhere.
+  const consultation = specialist.consultation as typeof specialist.consultation & {
+    startTime?: string;
+    endTime?: string;
+  };
+
+  const providerOpening = toMinutes(schedule.startTime);
+  const providerClosing = toMinutes(schedule.endTime);
+
+  const opening =
+    consultation.startTime !== undefined
+      ? Math.max(providerOpening, toMinutes(consultation.startTime))
+      : providerOpening;
+
+  const closing =
+    consultation.endTime !== undefined
+      ? Math.min(providerClosing, toMinutes(consultation.endTime))
+      : providerClosing;
+
   const duration = specialist.consultation.durationInMinutes;
   const buffer = specialist.consultation.bufferInMinutes;
   const step = duration + buffer;
@@ -165,6 +206,10 @@ export function generateAppointmentSlots({
     bookingsForDay.map((booking) => booking.startTime),
   );
 
+  const providerNow = getProviderLocalDateTime(provider.timezone);
+  const isPastDate = date < providerNow.date;
+  const isToday = date === providerNow.date;
+
   const slots: AppointmentSlot[] = [];
 
   for (
@@ -175,42 +220,17 @@ export function generateAppointmentSlots({
     const startTime = toTime(start);
     const endTime = toTime(start + duration);
     const isBooked = bookedTimes.has(startTime);
-    const isPast = bookedTimes.has(startTime);
-
+    const isPast =
+      isPastDate || (isToday && start <= toMinutes(providerNow.time));
 
     slots.push({
       startTime,
       endTime,
       isBooked,
       isPast,
-      availableForGroup: !isBooked,
+      availableForGroup: !isBooked && !isPast,
     });
   }
 
   return slots;
 }
-
-
-export function getProviderLocalDateTime(timeZone: string): {
-    date: string;
-    time: string;
-  } {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(new Date());
-  
-    const values = Object.fromEntries(
-      parts.map((part) => [part.type, part.value]),
-    );
-  
-    return {
-      date: `${values.year}-${values.month}-${values.day}`,
-      time: `${values.hour}:${values.minute}`,
-    };
-  }
