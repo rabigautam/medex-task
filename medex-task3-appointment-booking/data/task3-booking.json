@@ -7,6 +7,10 @@
       "country": "TH",
       "timezone": "Asia/Bangkok",
       "daySchedules": {
+       "sunday": {
+        "startTime": "08:00",
+        "endTime": "20:00"
+       },
        "monday": {
         "startTime": "08:00",
         "endTime": "20:00"
@@ -25,7 +29,7 @@
        },
        "friday": {
         "startTime": "08:00",
-        "endTime": "17:00"
+        "endTime": "18:00"
        },
        "saturday": {
         "startTime": "09:00",

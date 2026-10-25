@@ -5,5 +5,5 @@ import BookingExperience from "@/components/BookingExperience";
 export default async function Home() {
   const data = await getData();
 
-  return <BookingExperience providers={data.providers} />;
+  return <BookingExperience  />;
 }

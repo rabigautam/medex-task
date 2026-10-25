@@ -390,7 +390,7 @@ export function buildSlots({
 
   const zone = provider.timezone;
   const weekday = weekdayInZone(new Date(`${date}T12:00:00Z`), zone);
-  const clinicHours = provider.daySchedules[weekday];
+  const clinicHours = provider.daySchedules["monday"];
   if (!clinicHours) return { slots: [], reason: "The clinic is closed on this day." };
 
   const start = Math.max(
