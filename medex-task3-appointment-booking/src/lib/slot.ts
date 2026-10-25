@@ -6,6 +6,7 @@ export type AppointmentSlot = {
   endTime: string;
   isBooked: boolean;
   availableForGroup: boolean;
+  isPast:boolean;
 };
 
 export type SlotPeriod = "morning" | "afternoon" | "evening";
@@ -174,14 +175,42 @@ export function generateAppointmentSlots({
     const startTime = toTime(start);
     const endTime = toTime(start + duration);
     const isBooked = bookedTimes.has(startTime);
+    const isPast = bookedTimes.has(startTime);
+
 
     slots.push({
       startTime,
       endTime,
       isBooked,
+      isPast,
       availableForGroup: !isBooked,
     });
   }
 
   return slots;
 }
+
+
+export function getProviderLocalDateTime(timeZone: string): {
+    date: string;
+    time: string;
+  } {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date());
+  
+    const values = Object.fromEntries(
+      parts.map((part) => [part.type, part.value]),
+    );
+  
+    return {
+      date: `${values.year}-${values.month}-${values.day}`,
+      time: `${values.hour}:${values.minute}`,
+    };
+  }

@@ -40,7 +40,13 @@ export default function AppointmentSlotGroups({
   onSelectSlot,
 }: Props) {
   const grouped = groupSlotsByPeriod(slots);
-  const availableCount = slots.filter((slot) => !slot.isBooked).length;
+
+  const isUnavailable = (slot: AppointmentSlot) =>
+    slot.isBooked || Boolean(slot.isPast);
+
+  const availableCount = slots.filter(
+    (slot) => !isUnavailable(slot),
+  ).length;
 
   return (
     <section className="slot-periods" aria-label="Appointment times">
@@ -55,8 +61,9 @@ export default function AppointmentSlotGroups({
 
       {PERIODS.map((period) => {
         const periodSlots = grouped[period.key];
+
         const periodAvailableCount = periodSlots.filter(
-          (slot) => !slot.isBooked,
+          (slot) => !isUnavailable(slot),
         ).length;
 
         return (
@@ -80,8 +87,6 @@ export default function AppointmentSlotGroups({
               </span>
             </div>
 
-            
-
             {periodSlots.length === 0 ? (
               <div className="empty slot-empty">
                 No appointment times in this period.
@@ -89,43 +94,53 @@ export default function AppointmentSlotGroups({
             ) : (
               <div className="slots-grid">
                 {periodSlots.map((slot) => {
-                  const selected = slot.startTime === selectedStartTime;
+                  const selected =
+                    slot.startTime === selectedStartTime;
+                  const unavailable = isUnavailable(slot);
+
+                  const status = slot.isBooked
+                    ? "booked and unavailable"
+                    : slot.isPast
+                      ? "appointment time has passed"
+                      : selected
+                        ? "selected"
+                        : "available";
 
                   return (
                     <button
-                    key={`${slot.startTime}-${slot.endTime}`}
-                    type="button"
-                    className={[
-                      "slot",
-                      selectedStartTime === slot.startTime ? "selected" : "",
-                      slot.isBooked ? "booked" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    disabled={slot.isBooked}
-                    aria-pressed={selectedStartTime === slot.startTime}
-                    aria-label={`${formatSlotTime(slot.startTime)}${
-                      slot.isBooked
-                        ? ", booked and unavailable"
-                        : selectedStartTime === slot.startTime
-                          ? ", selected"
-                          : ", available"
-                    }`}
-                    title={
-                      slot.isBooked
-                        ? "This appointment time is already booked"
-                        : `${formatSlotTime(slot.startTime)} – ${formatSlotTime(slot.endTime)}`
-                    }
-                    onClick={() => onSelectSlot(slot)}
-                  >
-                    <strong>{formatSlotTime(slot.startTime)}</strong>
-                  
-                    <small>
-                      {slot.isBooked
-                        ? "Booked"
-                        : `Until ${formatSlotTime(slot.endTime)}`}
-                    </small>
-                  </button>)
+                      key={`${slot.startTime}-${slot.endTime}`}
+                      type="button"
+                      className={[
+                        "slot",
+                        selected ? "selected" : "",
+                        slot.isBooked ? "booked" : "",
+                        slot.isPast ? "past" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      disabled={unavailable}
+                      aria-pressed={selected}
+                      aria-label={`${formatSlotTime(slot.startTime)}, ${status}`}
+                      title={
+                        slot.isBooked
+                          ? "This appointment time is already booked"
+                          : slot.isPast
+                            ? "This appointment time has already passed"
+                            : `${formatSlotTime(slot.startTime)} – ${formatSlotTime(slot.endTime)}`
+                      }
+                      onClick={() => onSelectSlot(slot)}
+                    >
+                      <strong>{formatSlotTime(slot.startTime)}</strong>
+
+                      <small>
+                        {slot.isBooked
+                          ? "Booked"
+                          : slot.isPast
+                            ? "Time passed"
+                            : `Until ${formatSlotTime(slot.endTime)}`}
+                      </small>
+                    </button>
+                  );
                 })}
               </div>
             )}
@@ -142,8 +157,8 @@ export default function AppointmentSlotGroups({
 
       {slots.length > 0 && availableCount === 0 && (
         <div className="empty" role="status">
-          All appointment times for this date are booked. Please choose
-          another date.
+          No appointment times are currently available. Past and booked
+          times cannot be selected. Please choose another date.
         </div>
       )}
     </section>

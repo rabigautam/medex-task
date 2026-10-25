@@ -75,3 +75,10 @@ export type CalendarDay = {
   available: boolean;
   reason?: string;
 };
+export type AppointmentSlot = {
+    startTime: string;
+    endTime: string;
+    isBooked: boolean;
+    isPast?: boolean;
+    availableForGroup: boolean;
+  };
