@@ -1,4 +1,3 @@
-
 import type { BookedSlot, Provider } from "@/lib/types";
 
 export type AppointmentSlot = {
@@ -13,6 +12,13 @@ export type SlotPeriod = "morning" | "afternoon" | "evening";
 
 export type GroupedSlots = Record<SlotPeriod, AppointmentSlot[]>;
 
+export type TimeRange = {
+  startTime: string;
+  endTime: string;
+};
+
+export type BookableHours = TimeRange;
+
 export const SLOT_PERIODS: {
   key: SlotPeriod;
   title: string;
@@ -23,7 +29,8 @@ export const SLOT_PERIODS: {
   { key: "evening", title: "Evening", hours: "5:00 PM onward" },
 ];
 
-function parseTime(time: string): number {
+/** Converts a valid 24-hour HH:mm time into minutes after midnight. */
+export function parseTime(time: string): number {
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
 
   if (!match) {
@@ -33,11 +40,65 @@ function parseTime(time: string): number {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+function toMinutes(time: string): number {
+  return parseTime(time);
+}
+
+function toTime(minutes: number): string {
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) {
+    throw new Error(`Invalid minute value: ${minutes}`);
+  }
+
+  if (minutes === 1440) return "24:00";
+
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(
+    minutes % 60,
+  ).padStart(2, "0")}`;
+}
+
+/**
+ * Returns the overlap between provider opening hours and specialist
+ * consultation hours. Returns null if the hours are invalid or do not overlap.
+ *
+ * The end time is exclusive: an appointment must finish by the closing time.
+ */
+export function getBookableHours(
+  providerHours: TimeRange,
+  specialistHours: TimeRange,
+): BookableHours | null {
+  try {
+    const providerStart = toMinutes(providerHours.startTime);
+    const providerEnd = toMinutes(providerHours.endTime);
+    const specialistStart = toMinutes(specialistHours.startTime);
+    const specialistEnd = toMinutes(specialistHours.endTime);
+
+    if (
+      providerStart >= providerEnd ||
+      specialistStart >= specialistEnd
+    ) {
+      return null;
+    }
+
+    const start = Math.max(providerStart, specialistStart);
+    const end = Math.min(providerEnd, specialistEnd);
+
+    if (start >= end) return null;
+
+    return {
+      startTime: toTime(start),
+      endTime: toTime(end),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function getSlotPeriod(startTime: string): SlotPeriod {
   const minutes = parseTime(startTime);
 
   if (minutes < 12 * 60) return "morning";
   if (minutes < 17 * 60) return "afternoon";
+
   return "evening";
 }
 
@@ -81,37 +142,139 @@ type GenerateSlotsParams = {
   bookedSlots: BookedSlot[];
 };
 
-function toMinutes(time: string): number {
-  return parseTime(time);
+function parseDate(date: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const result = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    result.getUTCFullYear() !== year ||
+    result.getUTCMonth() !== month - 1 ||
+    result.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return result;
 }
 
-function toTime(minutes: number): string {
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(
-    minutes % 60,
-  ).padStart(2, "0")}`;
+const WEEKDAY_NAMES = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
+function getProviderHoursForDate(
+  provider: Provider,
+  date: string,
+): TimeRange | null {
+  const parsedDate = parseDate(date);
+
+  if (!parsedDate) return null;
+
+  return (
+    provider.daySchedules[WEEKDAY_NAMES[parsedDate.getUTCDay()]] ?? null
+  );
 }
 
+/**
+ * Gets the provider's current local date and time.
+ * Availability must be evaluated in the provider's timezone.
+ */
 export function getProviderLocalDateTime(timeZone: string): {
   date: string;
   time: string;
 } {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date());
 
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
+    const values = Object.fromEntries(
+      parts.map((part) => [part.type, part.value]),
+    );
+
+    return {
+      date: `${values.year}-${values.month}-${values.day}`,
+      time: `${values.hour}:${values.minute}`,
+    };
+  } catch {
+    throw new Error(`Invalid provider timezone: ${timeZone}`);
+  }
+}
+
+export type SpecialistAvailabilityForDate = {
+  providerHours: TimeRange | null;
+  specialistHours: TimeRange | null;
+  bookableHours: BookableHours | null;
+  isRestricted: boolean;
+};
+
+/**
+ * Returns the advertised specialist hours and the actual overlap with
+ * provider opening hours for the selected date.
+ *
+ * Assumption: specialist.consultation.startTime/endTime represent the
+ * advertised consultation window.
+ */
+export function getSpecialistAvailabilityForDate({
+  provider,
+  specialistId,
+  date,
+}: {
+  provider: Provider;
+  specialistId: string;
+  date: string;
+}): SpecialistAvailabilityForDate {
+  const providerHours = getProviderHoursForDate(provider, date);
+  const specialist = provider.specialists.find(
+    (item) => item.id === specialistId,
+  );
+
+  const specialistHours: TimeRange | null = specialist
+    ? {
+        startTime: specialist.consultation.startTime,
+        endTime: specialist.consultation.endTime,
+      }
+    : null;
+
+  if (!providerHours || !specialistHours) {
+    return {
+      providerHours,
+      specialistHours,
+      bookableHours: null,
+      isRestricted: false,
+    };
+  }
+
+  const bookableHours = getBookableHours(
+    providerHours,
+    specialistHours,
   );
 
   return {
-    date: `${values.year}-${values.month}-${values.day}`,
-    time: `${values.hour}:${values.minute}`,
+    providerHours,
+    specialistHours,
+    bookableHours,
+    isRestricted:
+      !bookableHours ||
+      bookableHours.startTime !== specialistHours.startTime ||
+      bookableHours.endTime !== specialistHours.endTime,
   };
 }
 
@@ -122,61 +285,26 @@ export function generateAppointmentSlots({
   date,
   bookedSlots,
 }: GenerateSlotsParams): AppointmentSlot[] {
-  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  if (!dateMatch) return [];
-
-  const year = Number(dateMatch[1]);
-  const month = Number(dateMatch[2]);
-  const day = Number(dateMatch[3]);
-  const dateObject = new Date(Date.UTC(year, month - 1, day));
-
-  if (
-    dateObject.getUTCFullYear() !== year ||
-    dateObject.getUTCMonth() !== month - 1 ||
-    dateObject.getUTCDate() !== day
-  ) {
-    return [];
-  }
-
-  const weekdayNames = [
-    "sunday",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-  ];
-
-  const schedule =
-    provider.daySchedules[weekdayNames[dateObject.getUTCDay()]];
+  if (!parseDate(date)) return [];
 
   const specialist = provider.specialists.find(
     (item) => item.id === specialistId,
   );
 
-  if (!schedule || !specialist) return [];
+  if (!specialist) return [];
 
-  // Restrict slots to the overlap of provider and specialist working hours.
-  // This assumes the specialist's consultation startTime/endTime represent
-  // their working window; adjust if your data model stores it elsewhere.
-  const consultation = specialist.consultation as typeof specialist.consultation & {
-    startTime?: string;
-    endTime?: string;
-  };
+  const availability = getSpecialistAvailabilityForDate({
+    provider,
+    specialistId,
+    date,
+  });
 
-  const providerOpening = toMinutes(schedule.startTime);
-  const providerClosing = toMinutes(schedule.endTime);
+  const { bookableHours } = availability;
 
-  const opening =
-    consultation.startTime !== undefined
-      ? Math.max(providerOpening, toMinutes(consultation.startTime))
-      : providerOpening;
+  if (!bookableHours) return [];
 
-  const closing =
-    consultation.endTime !== undefined
-      ? Math.min(providerClosing, toMinutes(consultation.endTime))
-      : providerClosing;
+  const opening = toMinutes(bookableHours.startTime);
+  const closing = toMinutes(bookableHours.endTime);
 
   const duration = specialist.consultation.durationInMinutes;
   const buffer = specialist.consultation.bufferInMinutes;
@@ -185,6 +313,8 @@ export function generateAppointmentSlots({
   if (
     !Number.isFinite(duration) ||
     !Number.isFinite(buffer) ||
+    !Number.isInteger(duration) ||
+    !Number.isInteger(buffer) ||
     duration <= 0 ||
     buffer < 0 ||
     step <= 0 ||
@@ -206,9 +336,17 @@ export function generateAppointmentSlots({
     bookingsForDay.map((booking) => booking.startTime),
   );
 
-  const providerNow = getProviderLocalDateTime(provider.timezone);
+  let providerNow: ReturnType<typeof getProviderLocalDateTime>;
+
+  try {
+    providerNow = getProviderLocalDateTime(provider.timezone);
+  } catch {
+    return [];
+  }
+
   const isPastDate = date < providerNow.date;
   const isToday = date === providerNow.date;
+  const currentMinutes = toMinutes(providerNow.time);
 
   const slots: AppointmentSlot[] = [];
 
@@ -220,8 +358,7 @@ export function generateAppointmentSlots({
     const startTime = toTime(start);
     const endTime = toTime(start + duration);
     const isBooked = bookedTimes.has(startTime);
-    const isPast =
-      isPastDate || (isToday && start <= toMinutes(providerNow.time));
+    const isPast = isPastDate || (isToday && start <= currentMinutes);
 
     slots.push({
       startTime,

@@ -1,12 +1,14 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import AppointmentCalendar from "./AppointmentCalender";
 import TimezoneClocks from "./TimezoneClocks";
-import AppointmentSlotGroups from "./AppointmentSlot";
+import AppointmentSlot from "./AppointmentSlot";
 import { getNext90Days } from "@/lib/calender";
-import { generateAppointmentSlots } from "@/lib/slot";
+import {
+  generateAppointmentSlots,
+  getSpecialistAvailabilityForDate,
+} from "@/lib/slot";
 import type {
   BookedSlot,
   Provider,
@@ -27,6 +29,13 @@ export default function BookingExperience({ providers }: Props) {
   const [selectedProviderId, setSelectedProviderId] = useState<number | null>(
     providers[0]?.id ?? null,
   );
+
+  const initialProvider = providers[0];
+
+  const [selectedSpecialistId, setSelectedSpecialistId] = useState<
+    string | null
+  >(initialProvider?.specialists[0]?.id ?? null);
+
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedStartTime, setSelectedStartTime] = useState<string | null>(
     null,
@@ -78,6 +87,10 @@ export default function BookingExperience({ providers }: Props) {
     (item) => item.id === selectedProviderId,
   );
 
+  const specialist = provider?.specialists.find(
+    (item) => item.id === selectedSpecialistId,
+  );
+
   const calendarDays = useMemo(() => {
     if (!provider) return [];
     return getNext90Days(provider, closures);
@@ -87,9 +100,15 @@ export default function BookingExperience({ providers }: Props) {
     (day) => day.date === selectedDate,
   );
 
-  // Temporary default: use the provider's first specialist.
-  // Add a specialist selector if patients need to choose between specialists.
-  const specialist = provider?.specialists[0];
+  const specialistAvailability = useMemo(() => {
+    if (!provider || !specialist || !selectedDate) return null;
+
+    return getSpecialistAvailabilityForDate({
+      provider,
+      specialistId: specialist.id,
+      date: selectedDate,
+    });
+  }, [provider, specialist, selectedDate]);
 
   const filteredSlots = useMemo(() => {
     if (
@@ -97,7 +116,9 @@ export default function BookingExperience({ providers }: Props) {
       !specialist ||
       !selectedDate ||
       !selectedDay ||
-      !selectedDay.available
+      !selectedDay.available ||
+      loading ||
+      error
     ) {
       return [];
     }
@@ -109,11 +130,27 @@ export default function BookingExperience({ providers }: Props) {
       date: selectedDay.date,
       bookedSlots,
     });
-  }, [provider, specialist, selectedDate, selectedDay, bookedSlots]);
+  }, [
+    provider,
+    specialist,
+    selectedDate,
+    selectedDay,
+    bookedSlots,
+    loading,
+    error,
+  ]);
 
   function handleProviderSelect(providerId: number) {
+    const nextProvider = providers.find((item) => item.id === providerId);
+
     setSelectedProviderId(providerId);
+    setSelectedSpecialistId(nextProvider?.specialists[0]?.id ?? null);
     setSelectedDate(null);
+    setSelectedStartTime(null);
+  }
+
+  function handleSpecialistSelect(specialistId: string) {
+    setSelectedSpecialistId(specialistId);
     setSelectedStartTime(null);
   }
 
@@ -142,8 +179,8 @@ export default function BookingExperience({ providers }: Props) {
         <span className="eyebrow">Find the right care</span>
         <h1>Book your appointment</h1>
         <p>
-          Choose a healthcare provider, find a suitable date, and select an
-          available appointment time.
+          Choose a healthcare provider and specialist, find a suitable date,
+          and select an available appointment time.
         </p>
       </section>
 
@@ -240,37 +277,134 @@ export default function BookingExperience({ providers }: Props) {
             </div>
           )}
 
-          {selectedDate && !loading && !error && provider && (
-            <>
-              {specialist && (
-                <div className="selected-specialist">
-                  <h3>Appointment specialist</h3>
-                  <p>
-                    {specialist.name} · {specialist.speciality}
-                  </p>
+          {provider && !loading && !error && (
+            <section className="specialist-picker">
+              <h2>Choose a specialist</h2>
+
+              {provider.specialists.length === 0 ? (
+                <div className="empty" role="status">
+                  No specialists are currently available for this provider.
+                </div>
+              ) : (
+                <div className="specialist-list">
+                  {provider.specialists.map((item) => {
+                    const selected = item.id === selectedSpecialistId;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`specialist-option${selected ? " selected" : ""}`}
+                        aria-pressed={selected}
+                        onClick={() => handleSpecialistSelect(item.id)}
+                      >
+                        <strong>{item.name}</strong>
+                        <span>{item.speciality}</span>
+                        <small>
+                          Consultation:{" "}
+                          {item.consultation.startTime} –{" "}
+                          {item.consultation.endTime}
+                        </small>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
+            </section>
+          )}
 
-              <AppointmentSlotGroups
-                slots={filteredSlots}
-                selectedStartTime={selectedStartTime}
-                onSelectSlot={(slot) => {
-                  if (!slot.isBooked) {
-                    setSelectedStartTime(slot.startTime);
-                  }
-                }}
-              />
+          {selectedDate && !loading && !error && provider && (
+            <>
+              {selectedDay && !selectedDay.available ? (
+                <div className="empty" role="status">
+                  This provider is unavailable on the selected date. Please
+                  choose another date.
+                </div>
+              ) : specialist && specialistAvailability ? (
+                <>
+                  <div className="selected-specialist">
+                    <h3>Selected specialist</h3>
+                    <p>
+                      {specialist.name} · {specialist.speciality}
+                    </p>
+                  </div>
 
-              {selectedStartTime && (
-                <div className="selection-summary" role="status">
-                  <strong>Selected appointment</strong>
-                  <p>
-                    {selectedDate} at {selectedStartTime}
-                  </p>
-                  <p>
-                    {provider.name}
-                    {specialist ? ` · ${specialist.name}` : ""}
-                  </p>
+                  <div className="slot-hours-info" role="note">
+                    <h3>Consultation hours</h3>
+
+                    {specialistAvailability.specialistHours ? (
+                      <p>
+                        Advertised specialist hours:{" "}
+                        {specialistAvailability.specialistHours.startTime} –{" "}
+                        {specialistAvailability.specialistHours.endTime}
+                      </p>
+                    ) : (
+                      <p>Specialist consultation hours are unavailable.</p>
+                    )}
+
+                    {specialistAvailability.providerHours && (
+                      <p>
+                        Provider opening hours:{" "}
+                        {specialistAvailability.providerHours.startTime} –{" "}
+                        {specialistAvailability.providerHours.endTime}
+                      </p>
+                    )}
+
+                    {!specialistAvailability.providerHours ? (
+                      <p>
+                        The provider has no opening schedule for this day,
+                        so appointments cannot be booked.
+                      </p>
+                    ) : !specialistAvailability.bookableHours ? (
+                      <p>
+                        The specialist&apos;s consultation hours do not
+                        overlap with the provider&apos;s opening hours.
+                        No appointments can be booked on this date.
+                      </p>
+                    ) : specialistAvailability.isRestricted ? (
+                      <p>
+                        Bookable hours are{" "}
+                        {specialistAvailability.bookableHours.startTime} –{" "}
+                        {specialistAvailability.bookableHours.endTime}.
+                        Some advertised specialist hours fall outside the
+                        provider&apos;s opening hours and cannot be booked.
+                      </p>
+                    ) : (
+                      <p>
+                        The specialist&apos;s advertised hours fit within
+                        the provider&apos;s opening hours.
+                      </p>
+                    )}
+                  </div>
+
+                  <AppointmentSlot
+                    slots={filteredSlots}
+                    selectedStartTime={selectedStartTime}
+                    onSelectSlot={(slot) => {
+                      if (!slot.isBooked && !slot.isPast) {
+                        setSelectedStartTime(slot.startTime);
+                      }
+                    }}
+                  />
+
+                  {selectedStartTime && (
+                    <div className="selection-summary" role="status">
+                      <strong>Selected appointment</strong>
+                      <p>
+                        {selectedDate} at {selectedStartTime}
+                      </p>
+                      <p>
+                        {provider.name} · {specialist.name}
+                      </p>
+                      <small>
+                        Times are in {provider.timezone}.
+                      </small>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="empty" role="status">
+                  Choose a specialist to see available appointment times.
                 </div>
               )}
             </>

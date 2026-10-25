@@ -1,7 +1,6 @@
-
 "use client";
 
-import type { AppointmentSlot } from "@/lib/slot";
+import type { AppointmentSlot, BookableHours } from "@/lib/slot";
 import {
   formatSlotTime,
   groupSlotsByPeriod,
@@ -11,6 +10,9 @@ type Props = {
   slots: AppointmentSlot[];
   selectedStartTime: string | null;
   onSelectSlot: (slot: AppointmentSlot) => void;
+  specialistHours?: BookableHours | null;
+  providerHours?: BookableHours | null;
+  bookableHours?: BookableHours | null;
 };
 
 const PERIODS = [
@@ -34,10 +36,13 @@ const PERIODS = [
   },
 ] as const;
 
-export default function AppointmentSlotGroups({
+export default function AppointmentSlot({
   slots,
   selectedStartTime,
   onSelectSlot,
+  specialistHours,
+  providerHours,
+  bookableHours,
 }: Props) {
   const grouped = groupSlotsByPeriod(slots);
 
@@ -48,8 +53,45 @@ export default function AppointmentSlotGroups({
     (slot) => !isUnavailable(slot),
   ).length;
 
+  const hasHoursInfo = Boolean(specialistHours && providerHours);
+  const hasNoOverlap = hasHoursInfo && !bookableHours;
+  const isRestricted =
+    hasHoursInfo &&
+    Boolean(bookableHours) &&
+    (bookableHours!.startTime !== specialistHours!.startTime ||
+      bookableHours!.endTime !== specialistHours!.endTime);
+
   return (
     <section className="slot-periods" aria-label="Appointment times">
+      {hasHoursInfo && (
+        <div className="slot-hours-info" role="note">
+          <h2>Specialist consultation hours</h2>
+          <p>
+            Advertised hours: {formatSlotTime(specialistHours!.startTime)} –{" "}
+            {formatSlotTime(specialistHours!.endTime)}
+          </p>
+          {hasNoOverlap ? (
+            <p>
+              This specialist&apos;s consultation hours do not overlap with
+              the provider&apos;s opening hours on this date, so no appointments
+              can be booked.
+            </p>
+          ) : isRestricted ? (
+            <p>
+              Bookable hours: {formatSlotTime(bookableHours!.startTime)} –{" "}
+              {formatSlotTime(bookableHours!.endTime)}. Some advertised hours
+              fall outside the provider&apos;s opening hours and are therefore
+              unavailable for booking.
+            </p>
+          ) : (
+            <p>
+              The specialist&apos;s consultation hours fit within the
+              provider&apos;s opening hours.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="slot-periods-heading">
         <div>
           <h2>Available appointment times</h2>
@@ -94,8 +136,7 @@ export default function AppointmentSlotGroups({
             ) : (
               <div className="slots-grid">
                 {periodSlots.map((slot) => {
-                  const selected =
-                    slot.startTime === selectedStartTime;
+                  const selected = slot.startTime === selectedStartTime;
                   const unavailable = isUnavailable(slot);
 
                   const status = slot.isBooked
@@ -131,7 +172,6 @@ export default function AppointmentSlotGroups({
                       onClick={() => onSelectSlot(slot)}
                     >
                       <strong>{formatSlotTime(slot.startTime)}</strong>
-
                       <small>
                         {slot.isBooked
                           ? "Booked"
