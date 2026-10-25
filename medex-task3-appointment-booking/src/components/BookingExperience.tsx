@@ -1,7 +1,9 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import AppointmentCalendar from "./AppointmentCalender";
+import TimezoneClocks from "./TimezoneClocks";
 import { getNext90Days } from "@/lib/calender";
 import type { Provider, ProviderClosure } from "@/lib/types";
 
@@ -40,7 +42,7 @@ export default function BookingExperience({ providers }: Props) {
         }
 
         const data: BookingContext = await response.json();
-        setClosures(data.closures);
+        setClosures(data.closures ?? []);
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         setError("Unable to load availability. Please try again.");
@@ -50,58 +52,136 @@ export default function BookingExperience({ providers }: Props) {
     }
 
     loadBookingContext();
-
     return () => controller.abort();
   }, []);
 
-  const provider = providers.find((item) => item.id === selectedProviderId);
+  const provider = providers.find(
+    (item) => item.id === selectedProviderId,
+  );
 
   const calendarDays = useMemo(() => {
     if (!provider) return [];
     return getNext90Days(provider, closures);
   }, [provider, closures]);
 
-  if (loading) {
-    return <p role="status">Loading appointment calendar…</p>;
-  }
-
-  if (error) {
-    return (
-      <div>
-        <p role="alert">{error}</p>
-        <button onClick={() => window.location.reload()}>Retry</button>
-      </div>
-    );
-  }
-
-  if (!provider) {
-    return <p>Please select a provider.</p>;
+  function retry() {
+    window.location.reload();
   }
 
   return (
-    <section>
-      <label htmlFor="provider-select">Choose a provider</label>
-      <select
-        id="provider-select"
-        value={selectedProviderId ?? ""}
-        onChange={(event) => {
-          setSelectedProviderId(Number(event.target.value));
-          setSelectedDate(null);
-        }}
-      >
-        {providers.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}
-          </option>
-        ))}
-      </select>
+    <main className="shell">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brandmark" aria-hidden="true">✚</span>
+          <span>MedEx</span>
+        </div>
+        <span className="secure">Secure appointment booking</span>
+      </header>
 
-      <AppointmentCalendar
-        provider={provider}
-        days={calendarDays}
-        selectedDate={selectedDate}
-        onSelectDate={setSelectedDate}
-      />
-    </section>
+      <section className="hero">
+        <span className="eyebrow">Find the right care</span>
+        <h1>Book your appointment</h1>
+        <p>
+          Choose a healthcare provider, find a suitable date, and continue
+          to appointment availability.
+        </p>
+      </section>
+
+      <div className="layout">
+        <aside className="panel sidebar">
+          <h2 className="section-label">Choose a provider</h2>
+
+          <div className="provider-list">
+            {providers.map((item, index) => {
+              const selected = item.id === selectedProviderId;
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`provider-option${selected ? " selected" : ""}`}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setSelectedProviderId(item.id);
+                    setSelectedDate(null);
+                  }}
+                >
+                  <span className="provider-icon" aria-hidden="true">
+                    {["✚", "✦", "＋", "✚", "✦", "＋"][index % 6]}
+                  </span>
+                  <span>
+                    <strong>{item.name}</strong>
+                    <small>{selected ? "Selected provider" : "Healthcare provider"}</small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {provider && (
+            <div className="timezone-note">
+              <strong>Provider local time</strong>
+              <p>
+                Dates and appointment availability follow the local calendar
+                of {provider.name}.
+              </p>
+              <small>{provider.timezone}</small>
+            </div>
+          )}
+        </aside>
+
+        <section className="panel mainpanel">
+          <div className="panel-head">
+            <div>
+              <h2>Choose an appointment date</h2>
+              <p>
+                Dates are shown in {provider?.name ?? "your provider"}&apos;s
+                local calendar. Select an available date to continue.
+              </p>
+            </div>
+            <span className="pill">90-day availability</span>
+          </div>
+
+          {provider && (
+            <TimezoneClocks
+              providerName={provider.name}
+              providerTimeZone={provider.timezone}
+            />
+          )}
+
+          {loading ? (
+            <div role="status" aria-live="polite">
+              <p>Loading appointment availability…</p>
+              <div className="skeleton" />
+              <div className="skeleton" style={{ marginTop: 10 }} />
+            </div>
+          ) : error ? (
+            <div className="alert error" role="alert">
+              <p>{error}</p>
+              <button type="button" className="secondary" onClick={retry}>
+                Retry
+              </button>
+            </div>
+          ) : provider ? (
+            <AppointmentCalendar
+              provider={provider}
+              days={calendarDays}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+            />
+          ) : (
+            <div className="empty">
+              <strong>No provider selected</strong>
+              Choose a provider to view appointment dates.
+            </div>
+          )}
+
+          <p className="footer-note">
+            Availability can change while you book. Your appointment is not
+            confirmed until the booking process succeeds.
+          </p>
+        </section>
+      </div>
+    </main>
   );
 }
