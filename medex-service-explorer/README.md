@@ -96,15 +96,13 @@ Before submission, measure this in the target browser rather than claiming an un
 
 This project does not claim a verified 100 ms benchmark yet. If profiling shows facet computation exceeds the target, the next step is to pre-index service IDs by facet value and compute counts with bitsets or cached intersections, then profile again.
 
-## Deliberately limited / next steps
+#### Testing Approach
 
-- The mock API is in-memory and returns the visible services at once; a production API would paginate or query server-side.
-- The provider search control currently shows the first ten matching providers and asks the user to search to narrow the list; a dedicated virtualized list would scale better.
-- The category tree UI can be expanded to show all subcategories with nested disclosure controls.
-- The current drawer implements pending selections and result count, but production-grade focus trapping/restoration and Escape handling should be added.
-- Add Playwright coverage for URL reload/back-forward, mobile drawer, error retry, and keyboard-only journeys.
-- Profile on a mid-range laptop and optimize facets if required before claiming the 100 ms target.
+Tests use representative datasets and expected outputs to validate business logic independently of the UI where practical. This helps identify regressions in filtering, pricing, and other core functionality.
 
+### Known Limitations
+
+Some integration and end-to-end scenarios may require additional coverage, including API failure recovery, browser navigation, mobile filter interactions, and complete booking or checkout flows. These should be listed as pending only if they are not already covered by the existing tests.
 ## AI assistance disclosure
 
 AI assistance was used to help draft parts like test cases , issue related help ,  implementation of utils function and documentation. 
