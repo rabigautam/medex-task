@@ -28,7 +28,6 @@ npm run build
 | 5 | Booked slots visible but not selectable | Implemented | Booked slots remain visible and disabled. |
 | 6 | Disable slots that have already started | Implemented | Today's past/started slots are unavailable using provider-local time. |
 | 7 | Specialist hours and provider opening hours | Implemented | Bookable hours are restricted to the overlap; the UI explains when specialist hours extend beyond provider hours. |
-| 8 | Group booking for up to four people using consecutive free slots | **Not implemented** | Deferred due to time constraints. |
 | 9 | Handle a slot being taken during confirmation (`409 Conflict`) | **Not implemented** | Preserve the current form and offer alternatives after a conflict is not completed. |
 | 10 | Reschedule an existing booking | **Not implemented** | The rescheduling experience and confirmation of old-versus-new slot are deferred. |
 | 11 | Booking and availability states | Implemented | Supports the implemented loading, error, and availability states. |
@@ -42,7 +41,7 @@ npm run build
 
 ## Known limitations
 
-Requirements **8, 9, 10, and 13** remain outstanding because of the time constraint. 
+Requirements  9, 10, and 13** remain outstanding because of the time constraint. 
 
 ## DEMO LINK
 https://www.loom.com/share/92be9a2693484a1bb253e807f59b95fd
