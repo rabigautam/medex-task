@@ -183,19 +183,39 @@ export default function BookingExperience() {
   const firstWeekday = new Date(`${monthStart}T12:00:00Z`).getUTCDay();
   const calendarDays: Array<string | null> = Array.from(
     { length: firstWeekday + daysInMonth },
-    (_, index) => index < firstWeekday ? null :
-      `${monthDate.getUTCFullYear()}-${pad(monthDate.getUTCMonth() + 1)}-${pad(index - firstWeekday + 1)}`
+    (_, index) =>
+      index < firstWeekday
+        ? null
+        : `${monthDate.getUTCFullYear()}-${pad(monthDate.getUTCMonth() + 1)}-${pad(index - firstWeekday + 1)}`
   );
 
   const dayStatus = (date: string) => {
     if (date < providerToday) return { unavailable: true, label: "Past date" };
     if (date > maxDate) return { unavailable: true, label: "Outside the 90-day window" };
     if (!provider) return { unavailable: true, label: "Provider loading" };
-    const weekday = weekdayInZone(new Date(`${date}T12:00:00Z`), providerZone);
-    if (!provider.daySchedules[weekday]) return { unavailable: true, label: "Clinic closed" };
+
+    const dateObj = new Date(`${date}T12:00:00Z`);
+    const dayOfWeek = dateObj.getUTCDay(); // 0 = Sunday, 6 = Saturday
+
+    // Optional: If you want to force Saturdays (6) and Sundays (0) to always show as Closed:
+    if (dayOfWeek === 6 || dayOfWeek === 0) {
+      return { unavailable: true, label: "Weekend closed" };
+    }
+
+    if (provider.daySchedules) {
+      const weekday = weekdayInZone(dateObj, providerZone);
+      const schedule = 
+        provider.daySchedules[weekday] ?? 
+        provider.daySchedules[String(weekday)] ??
+        provider.daySchedules[String(weekday).toLowerCase()];
+
+      if ( schedule === null) {
+        return { unavailable: true, label: "Clinic closed" };
+      }
+    }
+
     return { unavailable: false, label: "Available clinic day" };
   };
-
   const grouped = useMemo(() => {
     // Keep rendering safe while the API is loading or returns unexpected data.
     const safeSlots = availableSlots.filter(slot => slot && typeof slot.startTime === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(slot.startTime));
@@ -228,7 +248,7 @@ export default function BookingExperience() {
         return;
       }
       if (!response.ok) throw new Error(body.message ?? "Booking could not be confirmed.");
-      setConfirmed(`Booking confirmed: ${body.bookingId} · ${body.reservedCount} slot${body.reservedCount === 1 ? "" : "s"} reserved`);
+      setConfirmed(`Booking confirmed: ${body.bookingId} · ${body.numberOfPeople} slot${body.numberOfPeople === 1 ? "" : "s"} reserved`);
       setSelectedTimes([]);
       await fetchSlots(selectedDate);
     } catch (e) {
@@ -364,32 +384,53 @@ export default function BookingExperience() {
           <div className="clock"><span>Your local time · Nepal</span><strong>{formatInZone(now, CUSTOMER_ZONE)}</strong><small>{customerToday} · {CUSTOMER_ZONE}</small></div>
         </div>}
 
-        <div className="calendar-wrap">
-          <div className="calendar-header">
-            <h3>{new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(monthDate)}</h3>
-            <div className="month-nav">
-              <button type="button" aria-label="Previous month" disabled={monthOffset === 0} onClick={() => setMonthOffset(value => Math.max(0, value - 1))}>‹</button>
-              <button type="button" aria-label="Next month" disabled={!canGoNext} onClick={() => setMonthOffset(value => value + 1)}>›</button>
-            </div>
+        <div className="calendar-wrap multi-month-wrap">
+          {[0, 1, 2].map(monthIndex => {
+            // Compute start & days for each of the 3 months dynamically
+            const mDate = new Date(`${providerToday}T12:00:00Z`);
+            mDate.setUTCDate(1);
+            mDate.setUTCMonth(mDate.getUTCMonth() + monthIndex);
+
+            const mStart = `${mDate.getUTCFullYear()}-${pad(mDate.getUTCMonth() + 1)}-01`;
+            const dInMonth = new Date(Date.UTC(mDate.getUTCFullYear(), mDate.getUTCMonth() + 1, 0)).getUTCDate();
+            const fWeekday = new Date(`${mStart}T12:00:00Z`).getUTCDay();
+            const cDays: Array<string | null> = Array.from(
+              { length: fWeekday + dInMonth },
+              (_, index) => index < fWeekday ? null : `${mDate.getUTCFullYear()}-${pad(mDate.getUTCMonth() + 1)}-${pad(index - fWeekday + 1)}`
+            );
+
+            return (
+              <div className="month-block" key={monthIndex} style={{ marginBottom: "2rem" }}>
+                <div className="calendar-header">
+                  <h3>{new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(mDate)}</h3>
+                </div>
+                <div className="weekdays" aria-hidden="true">
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => <span key={day}>{day}</span>)}
+                </div>
+                <div className="days" role="group" aria-label={`Appointment calendar for ${mDate.getUTCMonth() + 1}`}>
+                  {cDays.map((date, index) => date === null ? <span key={`blank-${index}`} /> : (
+                    <button
+                      type="button"
+                      key={date}
+                      className={`day ${date === selectedDate ? "selected" : ""} ${dayStatus(date).unavailable ? "closed" : ""}`}
+                      disabled={dayStatus(date).unavailable}
+                      onClick={() => { setSelectedDate(date); setSelectedTimes([]); }}
+                      aria-pressed={date === selectedDate}
+                      aria-label={`${dateLabel(date)}: ${dayStatus(date).label}`}
+                      title={dayStatus(date).label}
+                    >
+                      <span>{Number(date.slice(-2))}</span>
+                      <small>{dayStatus(date).unavailable ? "Closed" : "Available"}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          <div className="legend">
+            <span><i className="dot" />Available clinic day</span>
+            <span><i className="dot closed" />Closed / unavailable</span>
           </div>
-          <div className="weekdays" aria-hidden="true">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => <span key={day}>{day}</span>)}</div>
-          <div className="days" role="group" aria-label="Appointment calendar">
-            {calendarDays.map((date, index) => date === null ? <span key={`blank-${index}`} /> : (
-              <button
-                type="button"
-                key={date}
-                className={`day ${date === selectedDate ? "selected" : ""} ${dayStatus(date).unavailable ? "closed" : ""}`}
-                disabled={dayStatus(date).unavailable}
-                onClick={() => { setSelectedDate(date); setSelectedTimes([]); }}
-                aria-pressed={date === selectedDate}
-                aria-label={`${dateLabel(date)}: ${dayStatus(date).label}`}
-                title={dayStatus(date).label}
-              >
-                <span>{Number(date.slice(-2))}</span><small>{dayStatus(date).unavailable ? "Closed" : "Available"}</small>
-              </button>
-            ))}
-          </div>
-          <div className="legend"><span><i className="dot" />Available clinic day</span><span><i className="dot closed" />Closed / unavailable</span></div>
         </div>
 
         <section className="slot-section">
