@@ -278,7 +278,24 @@
       font-size: 8px;
     }
   }
-
+/* Layout container: 2 columns */
+.multi-month-wrap {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* 2 equal columns */
+    gap: 1.5rem;
+  }
+  
+  /* Make the 3rd month sit cleanly in the first column of the second row */
+  .multi-month-wrap .month-block:nth-child(3) {
+    grid-column: 1; 
+  }
+  
+  /* Responsive adjustment for mobile screens */
+  @media (max-width: 768px) {
+    .multi-month-wrap {
+      grid-template-columns: 1fr; /* Stack into 1 column on smaller screens */
+    }
+  }
 /* Requirement 3: Morning, afternoon and evening slots */
 
 .slot-periods {
@@ -997,3 +1014,4 @@
     white-space: nowrap;
     border: 0;
   }
+
